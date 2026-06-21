@@ -1,0 +1,31 @@
+{
+  "name": "phone-connection",
+  "version": "0.1.0",
+  "description": "QR-code pairing and live WebSocket connection between a phone and this server.",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "qr",
+    "pairing",
+    "websocket",
+    "phone"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

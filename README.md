@@ -1,0 +1,83 @@
+# Phone Connection
+
+QR-code pairing and a live WebSocket channel between a phone and this server.
+
+A screen displays a QR code; you scan it with a phone, the phone claims the
+pairing session with a one-time token, and a WebSocket opens so the two sides
+can exchange messages in real time.
+
+## How it works
+
+```
+ ┌────────┐   1. POST /api/pairing      ┌──────────┐
+ │ Screen │ ──────────────────────────► │  Server  │
+ │        │ ◄── QR (session + token) ── │          │
+ └────────┘                             └──────────┘
+     │  shows QR                              ▲
+     │                                        │ 3. POST /api/pairing/claim
+     ▼  2. scan                               │    (session + token)
+ ┌────────┐ ───────────────────────────────► │
+ │ Phone  │                                   │
+ └────────┘ ◄── 4. WebSocket /ws ───────────►┘
+       both sides connect to /ws?session=<id> and relay messages
+```
+
+1. The screen calls `POST /api/pairing` and renders the returned QR code.
+2. The phone scans the QR, which opens `/phone.html?session=…&token=…`.
+3. The phone calls `POST /api/pairing/claim` to consume the one-time token.
+4. Both sides connect to `ws://…/ws?session=<id>` and exchange JSON messages.
+
+Pairing sessions expire after 5 minutes if no phone claims them.
+
+## Run it
+
+```bash
+npm install
+npm run dev      # or: npm run build && npm start
+```
+
+Then open `http://<your-machine-ip>:3000/` on a screen and scan the code.
+
+> **Important:** the phone must reach the server over the network. On a LAN,
+> set `PUBLIC_URL` to your machine's IP so the QR code resolves from the phone:
+>
+> ```bash
+> PUBLIC_URL=http://192.168.1.50:3000 npm run dev
+> ```
+
+## Configuration
+
+| Env var      | Default                 | Description                                  |
+| ------------ | ----------------------- | -------------------------------------------- |
+| `HOST`       | `0.0.0.0`               | Interface to bind.                           |
+| `PORT`       | `3000`                  | Port to listen on.                           |
+| `PUBLIC_URL` | `http://<host>:<port>`  | URL the phone uses (must be reachable by it).|
+
+## HTTP API
+
+| Method | Path                    | Purpose                                       |
+| ------ | ----------------------- | --------------------------------------------- |
+| POST   | `/api/pairing`          | Create a session, return QR + pairing URL.    |
+| GET    | `/api/pairing/status`   | Poll a session's status (`?session=<id>`).    |
+| POST   | `/api/pairing/claim`    | Phone claims a session with its token.        |
+| WS     | `/ws?session=<id>`      | Live bidirectional message channel.           |
+
+## Project layout
+
+```
+src/
+  pairing.ts   # in-memory pairing session store (tokens, expiry)
+  server.ts    # HTTP + WebSocket server, static file serving
+public/
+  index.html   # screen: shows the QR code
+  screen.js    # screen controller
+  phone.html   # phone: lands here after scanning
+  phone.js     # phone controller
+```
+
+## Notes
+
+This is a scaffold using an in-memory store, so sessions are lost on restart and
+it does not scale across multiple server instances. For production, back the
+`PairingStore` with a shared store (e.g. Redis) and serve over HTTPS so the
+phone can use `wss://` and the camera API where required.
