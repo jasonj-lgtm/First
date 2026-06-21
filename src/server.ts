@@ -9,10 +9,13 @@ import { PairingStore } from "./pairing.js";
 const HOST = process.env.HOST ?? "0.0.0.0";
 const PORT = Number(process.env.PORT ?? 3000);
 /**
- * Base URL the phone should reach. On a LAN this must be the machine's IP
- * (not localhost), otherwise the QR code won't resolve from the phone.
+ * Base URL the phone should reach, resolved per request so a tunnel can set
+ * `PUBLIC_URL` after the server has already started. On a LAN this must be the
+ * machine's IP (not localhost); over a tunnel it's the public https URL.
  */
-const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://${HOST}:${PORT}`;
+function getPublicUrl(): string {
+  return process.env.PUBLIC_URL ?? `http://${HOST}:${PORT}`;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
@@ -86,13 +89,13 @@ async function serveStatic(res: ServerResponse, relPath: string): Promise<void> 
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const url = new URL(req.url ?? "/", PUBLIC_URL);
+  const url = new URL(req.url ?? "/", getPublicUrl());
 
   // 1. Create a pairing session + QR code for a screen to display.
   if (url.pathname === "/api/pairing" && req.method === "POST") {
     const session = store.create();
     // The phone opens this URL after scanning; it carries the one-use token.
-    const pairUrl = `${PUBLIC_URL}/phone.html?session=${session.id}&token=${session.token}`;
+    const pairUrl = `${getPublicUrl()}/phone.html?session=${session.id}&token=${session.token}`;
     const qrDataUrl = await QRCode.toDataURL(pairUrl, { margin: 1, width: 320 });
     sendJson(res, 201, {
       sessionId: session.id,
@@ -185,7 +188,7 @@ const httpServer = createServer((req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url ?? "/", PUBLIC_URL);
+  const url = new URL(req.url ?? "/", getPublicUrl());
   if (url.pathname !== "/ws") {
     socket.destroy();
     return;
@@ -223,9 +226,22 @@ wss.on("connection", (ws: WebSocket, _req: IncomingMessage, sessionId: string) =
   });
 });
 
-httpServer.listen(PORT, HOST, () => {
-  console.log(`Phone-connection server listening on ${PUBLIC_URL}`);
-  console.log(`Open ${PUBLIC_URL}/ on a screen, then scan the QR with a phone.`);
-});
+/** Start listening. Returns a promise that resolves once the server is up. */
+function start(): Promise<void> {
+  return new Promise((resolve) => {
+    httpServer.listen(PORT, HOST, () => {
+      const url = getPublicUrl();
+      console.log(`Phone-connection server listening on ${url}`);
+      console.log(`Open ${url}/ on a screen, then scan the QR with a phone.`);
+      resolve();
+    });
+  });
+}
 
-export { httpServer, store };
+// Auto-start when run directly (e.g. `node dist/server.js`), but not when
+// imported by the tunnel launcher, which starts it after setting PUBLIC_URL.
+if (process.env.NO_AUTOSTART !== "1") {
+  start();
+}
+
+export { httpServer, store, start, PORT };

@@ -31,19 +31,38 @@ Pairing sessions expire after 5 minutes if no phone claims them.
 
 ## Run it
 
+### Option A — public link from anywhere (easiest for a phone)
+
 ```bash
 npm install
-npm run dev      # or: npm run build && npm start
+npm run share
 ```
 
-Then open `http://<your-machine-ip>:3000/` on a screen and scan the code.
+This starts the server, opens a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
+(no account needed — `cloudflared` is downloaded automatically the first time),
+and prints a **QR code right in your terminal**. Scan it with your phone's
+camera from anywhere — no shared Wi-Fi required — and the phone pairs
+immediately. Messages you type on the phone then show up in the terminal.
 
-> **Important:** the phone must reach the server over the network. On a LAN,
-> set `PUBLIC_URL` to your machine's IP so the QR code resolves from the phone:
->
-> ```bash
-> PUBLIC_URL=http://192.168.1.50:3000 npm run dev
-> ```
+The public address looks like `https://something-random.trycloudflare.com` and
+changes each run. Press `Ctrl+C` to stop.
+
+> Needs normal outbound internet. Locked-down networks that block
+> `api.trycloudflare.com` (some corporate or sandboxed environments) can't open
+> the tunnel — use Option B there, or install `cloudflared` and set up a named
+> tunnel.
+
+### Option B — same Wi-Fi (LAN)
+
+```bash
+npm install
+PUBLIC_URL=http://192.168.1.50:3000 npm run dev   # use YOUR computer's IP
+```
+
+Then open `http://192.168.1.50:3000/` on a screen and scan the code with a phone
+on the same network. Replace `192.168.1.50` with your computer's actual local IP
+(macOS: System Settings → Wi-Fi → Details; Windows: `ipconfig`). `localhost` and
+the literal text `<your-machine-ip>` will **not** work from the phone.
 
 ## Configuration
 
@@ -68,6 +87,7 @@ Then open `http://<your-machine-ip>:3000/` on a screen and scan the code.
 src/
   pairing.ts   # in-memory pairing session store (tokens, expiry)
   server.ts    # HTTP + WebSocket server, static file serving
+  share.ts     # public-link launcher: cloudflared tunnel + terminal QR
 public/
   index.html   # screen: shows the QR code
   screen.js    # screen controller
