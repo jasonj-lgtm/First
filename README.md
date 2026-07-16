@@ -29,6 +29,30 @@ can exchange messages in real time.
 
 Pairing sessions expire after 5 minutes if no phone claims them.
 
+## Skills
+
+Once paired, messages from the phone are dispatched to **skills** on the
+screen (`public/skills/`). A skill declares which messages it handles via
+`canHandle(data)`; anything unclaimed falls back to the screen's activity log.
+
+### Rendering skill
+
+The first skill: the phone sends content and the screen renders it live on a
+surface above the pairing card. On the phone, pick how the screen should show
+what you type:
+
+| Kind       | Payload                                            | Screen behaviour                          |
+| ---------- | -------------------------------------------------- | ----------------------------------------- |
+| `text`     | `{ skill: "render", kind: "text", content }`       | Big centred text.                         |
+| `markdown` | `{ skill: "render", kind: "markdown", content }`   | Safe Markdown subset (see below).         |
+| `image`    | `{ skill: "render", kind: "image", content: url }` | Shows the image (`http(s)` URLs only).    |
+| `clear`    | `{ skill: "render", kind: "clear" }`               | Empties and hides the surface.            |
+
+Each render replaces the previous content. The Markdown renderer HTML-escapes
+input first and supports only `#`/`##`/`###` headings, `- ` lists, `**bold**`,
+`*italic*`, `` `code` `` and `[text](https://…)` links — phone input can never
+inject raw HTML into the screen.
+
 ## Run it
 
 ### Option A — public link from anywhere (easiest for a phone)
@@ -89,10 +113,12 @@ src/
   server.ts    # HTTP + WebSocket server, static file serving
   share.ts     # public-link launcher: cloudflared tunnel + terminal QR
 public/
-  index.html   # screen: shows the QR code
-  screen.js    # screen controller
+  index.html   # screen: shows the QR code + render surface
+  screen.js    # screen controller, dispatches messages to skills
   phone.html   # phone: lands here after scanning
   phone.js     # phone controller
+  skills/
+    rendering.js  # rendering skill: text / markdown / image / clear
 ```
 
 ## Notes
