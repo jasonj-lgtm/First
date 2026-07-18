@@ -119,6 +119,10 @@ public/
   phone.js     # phone controller
   skills/
     rendering.js  # rendering skill: text / markdown / image / clear
+tools/
+  reveal_builder.py  # That 1 Painter before/after reveal reel builder (ffmpeg + Pillow)
+.claude/skills/rendering/
+  SKILL.md     # That 1 Painter rendering-skill playbook (brand standard + QA rubric)
 ```
 
 ## Notes

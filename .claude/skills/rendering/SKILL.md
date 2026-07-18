@@ -21,10 +21,22 @@ on-brand with a real Hillsboro CTA from CompanyCam.
 Backbone (all live): scanner over 362 job folders · YouTube bridge · brand
 template · QA rubric.
 
-**Where the tools run:** the pipeline code (`reveal_builder.py`, scanner,
-`auto_pair`) lives in the local content-factory environment at
-`http://127.0.0.1:8787` — not in this repository. This skill is the playbook:
-follow it there, or rebuild the steps with ffmpeg if working from raw footage.
+**Where the tools run:** a portable v2 reveal builder lives in this repo at
+`tools/reveal_builder.py` (needs `ffmpeg` + Pillow) — use it to build reveals
+from any environment:
+
+```bash
+python3 tools/reveal_builder.py \
+  --before before.jpg --after after.jpg --city Hillsboro \
+  --music track.mp3 [--logo logo.png] [--out reveal.mp4]
+```
+
+It produces the full v2 render: Ken Burns motion on both beats (zoom-in on
+before, zoom-out on after), blue-gradient chips that fade/slide in, music bed
+with fade-out, and the navy CTA/proof card. The original content-factory
+environment (scanner over job folders, `auto_pair`, OpusClip `run_clip_job`)
+runs locally at `http://127.0.0.1:8787`; the vision-judgment and QA steps of
+this playbook apply in both places.
 
 ## Reveal pipeline (before/after)
 
