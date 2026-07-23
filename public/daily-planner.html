@@ -45,7 +45,7 @@ h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:34px;color:#05
 <section class="band morning">
  <div class="inner">
   <div class="bars"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
-  <div class="daydate">Tuesday · July 21 2026 · Morning</div>
+  <div class="daydate"><span class="js-date">Today</span> · Morning</div>
   <h1>Set the intention. Name the three that matter.</h1>
   <div class="sub">Today's Message to Myself — fill before the day starts moving.</div>
 
@@ -81,7 +81,7 @@ h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:34px;color:#05
 <section class="band evening dim">
  <div class="inner">
   <div class="bars"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
-  <div class="daydate">Tuesday · July 21 2026 · Evening</div>
+  <div class="daydate"><span class="js-date">Today</span> · Evening</div>
   <h1>Close the loop. Score the habits honestly.</h1>
   <div class="sub">Preview — this half activates tonight. The goal isn't to be perfect; it's to be more self-aware every day.</div>
 
@@ -98,4 +98,13 @@ h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:34px;color:#05
  </div>
 </section>
 
+<script>
+(function(){
+  var d=new Date();
+  var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var mo=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var line=days[d.getDay()]+' · '+mo[d.getMonth()]+' '+d.getDate()+' '+d.getFullYear();
+  document.querySelectorAll('.js-date').forEach(function(el){el.textContent=line;});
+})();
+</script>
 </body></html>
