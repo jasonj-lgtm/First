@@ -59,6 +59,8 @@ h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:30px;margin:2p
   <h1 id="headline">Speak it. It writes itself.</h1>
   <div class="sub">Tap the mic, answer out loud, move to the next. Everything you say fills the written template.</div>
 
+  <div id="jsnote" class="warn">This viewer isn't running the app — the prompts, date, and mic need JavaScript. Download the file and open it in Safari or Chrome and everything appears.</div>
+
   <div id="micwarn" class="warn hidden">Your browser blocked mic capture. You can still type each answer, or tap 🔊 to hear the prompt. (Safari/Chrome on a phone work best.)</div>
 
   <div class="modebar">
@@ -215,6 +217,7 @@ function downloadOut(){
 }
 
 // init
+document.getElementById('jsnote').remove();
 document.getElementById('daydate').textContent=todayLine();
 if(!SR) document.getElementById('micwarn').classList.remove('hidden');
 renderHabits();
