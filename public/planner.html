@@ -102,10 +102,17 @@ h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:30px;margin:2p
 <script>
 const DATA = {"morning": [{"full": "One thing I can get excited about today is", "short": "Excite"}, {"full": "If one word could describe the kind of person I want to be today, that word is — and why I chose it", "short": "Word"}, {"full": "Someone who needs me on my A-game today is", "short": "A-game"}, {"full": "A situation that might stress me out or trip me up today could be — and the way my best self would deal with that", "short": "Stress"}, {"full": "Someone I could surprise with a note, gift, or sign of appreciation is", "short": "Appreciate"}, {"full": "One action I could take today to demonstrate excellence or real value is", "short": "Excellence"}, {"full": "One thing I could do today that is a little outside of my comfort zone is to", "short": "Comfort zone"}, {"full": "If I was a high performance coach looking at my life from a high level, I would tell myself to remember that", "short": "Coach's reminder"}, {"full": "The big projects I want to take on, even if I can't act on them today, are", "short": "Big projects"}, {"full": "I would know today was a great success if at the end of the day I did, said, or felt this", "short": "Success"}], "evening": [{"full": "A moment that I really appreciated today was", "short": "Appreciated"}, {"full": "A situation or task I handled well today was", "short": "Handled well"}, {"full": "Something I realized or learned today was", "short": "Learned"}, {"full": "I could have made today even better if I", "short": "Even better"}, {"full": "Something that could have helped me feel more connected to others today would have been", "short": "Connection"}, {"full": "If I was my own high performance coach, I would tell myself this statement about today", "short": "Coach's note"}], "habits": [{"name": "CLARITY", "stmt": "I knew my why and lived intentionally today."}, {"name": "PRODUCTIVITY", "stmt": "I worked on things that mattered most today."}, {"name": "ENERGY", "stmt": "I managed my mental and physical energy well."}, {"name": "INFLUENCE", "stmt": "I guided or treated others well today."}, {"name": "NECESSITY", "stmt": "I felt it was necessary to be my best and made success a must."}, {"name": "COURAGE", "stmt": "I shared my real self, thoughts, and feelings today."}]};
 let mode='morning', idx=0;
-const store = { morning:{}, evening:{}, scores:{} };
 
-// ---- persistence (in-memory only; storage APIs unavailable in this environment) ----
-function save(){ /* kept in the store object for the session */ }
+// ---- persistence: one localStorage entry per calendar day ----
+const STORE_KEY='voice-planner-'+new Date().toISOString().slice(0,10);
+const store=(function(){
+  try{
+    const s=JSON.parse(localStorage.getItem(STORE_KEY));
+    if(s && s.morning && s.evening && s.scores) return s;
+  }catch(e){}
+  return { morning:{}, evening:{}, scores:{} };
+})();
+function save(){ try{localStorage.setItem(STORE_KEY,JSON.stringify(store));}catch(e){} }
 
 function todayLine(){
   const d=new Date();
@@ -141,7 +148,7 @@ function render(){
   document.getElementById('ptext').textContent=p.full+' …';
   const a=document.getElementById('answer');
   a.value=store[mode][idx]||'';
-  a.oninput=()=>{store[mode][idx]=a.value;renderDots();};
+  a.oninput=()=>{store[mode][idx]=a.value;save();renderDots();};
   document.getElementById('prev').disabled=idx===0;
   document.getElementById('next').textContent = idx===prompts().length-1 ? 'Done ✓' : 'Next ›';
   renderDots();
@@ -171,6 +178,7 @@ function toggleRec(){
     }
     if(fin) base+=fin;
     store[mode][idx]=(base+interim).trim();
+    save();
     document.getElementById('answer').value=store[mode][idx];
     renderDots();
   };
@@ -196,7 +204,7 @@ function renderHabits(){
     h.appendChild(row);
   });
 }
-function setScore(i,n){ store.scores[i]=n; renderHabits(); }
+function setScore(i,n){ store.scores[i]=n; save(); renderHabits(); }
 
 // ---- output ----
 function buildText(){
