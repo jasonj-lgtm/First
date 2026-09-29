@@ -1,10 +1,16 @@
 // Screen-side controller: requests a pairing QR, waits for a phone to pair,
-// then opens a WebSocket and shows messages relayed from the phone.
+// then opens a WebSocket and dispatches messages relayed from the phone to
+// skills. Messages no skill claims fall back to the activity log.
+
+import { renderingSkill } from "./skills/rendering.js";
 
 const qrImg = document.getElementById("qr");
 const statusEl = document.getElementById("status");
 const refreshBtn = document.getElementById("refresh");
 const logEl = document.getElementById("log");
+const surfaceEl = document.getElementById("surface");
+
+const skills = [renderingSkill];
 
 let sessionId = null;
 let pollTimer = null;
@@ -65,7 +71,12 @@ function openSocket() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "message") {
-      log(`Phone: ${JSON.stringify(msg.data)}`);
+      const skill = skills.find((s) => s.canHandle(msg.data));
+      if (skill) {
+        skill.handle(msg.data, { surface: surfaceEl, log });
+      } else {
+        log(`Phone: ${JSON.stringify(msg.data)}`);
+      }
     } else if (msg.type === "peer_disconnected") {
       log("Phone disconnected.");
     }

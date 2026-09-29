@@ -42,6 +42,8 @@
         color: #f87171;
       }
       input,
+      select,
+      textarea,
       button {
         font-size: 1rem;
         padding: 0.6rem;
@@ -50,6 +52,11 @@
         width: 100%;
         box-sizing: border-box;
         margin-top: 0.5rem;
+        font-family: inherit;
+      }
+      textarea {
+        min-height: 5.5rem;
+        resize: vertical;
       }
       button {
         background: #6366f1;
@@ -59,6 +66,9 @@
       button:disabled {
         opacity: 0.5;
       }
+      button.secondary {
+        background: #334155;
+      }
     </style>
   </head>
   <body>
@@ -66,8 +76,15 @@
       <h1>Phone connection</h1>
       <div id="state" class="state">Pairing…</div>
       <div id="chat" hidden>
-        <input id="text" placeholder="Send a message to the screen" />
+        <select id="kind" aria-label="How the screen shows this">
+          <option value="message">Chat message (log only)</option>
+          <option value="text">Render as big text</option>
+          <option value="markdown">Render as Markdown</option>
+          <option value="image">Render image from URL</option>
+        </select>
+        <textarea id="text" placeholder="Send something to the screen"></textarea>
         <button id="send">Send</button>
+        <button id="clear" class="secondary">Clear screen</button>
       </div>
     </div>
     <script type="module" src="/phone.js"></script>
