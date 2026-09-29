@@ -168,8 +168,8 @@ def build(args: argparse.Namespace) -> None:
         tmp = Path(td)
         fit_photo(Path(args.before), tmp / "before.png")
         fit_photo(Path(args.after), tmp / "after.png")
-        make_chip("BEFORE", tmp / "chip_before.png")
-        make_chip("AFTER", tmp / "chip_after.png")
+        make_chip(args.label_before.upper(), tmp / "chip_before.png")
+        make_chip(args.label_after.upper(), tmp / "chip_after.png")
         make_cta_card(
             args.city, str(args.reviews), args.ccb,
             Path(args.logo) if args.logo else None, tmp / "cta.png",
@@ -246,6 +246,8 @@ def main() -> None:
     p.add_argument("--logo", help="Logo PNG for the CTA card (text fallback if omitted)")
     p.add_argument("--reviews", default="351", help="Five-star review count")
     p.add_argument("--ccb", default="249983", help="CCB license number")
+    p.add_argument("--label-before", default="BEFORE", help="Chip text for the first beat")
+    p.add_argument("--label-after", default="AFTER", help="Chip text for the second beat")
     p.add_argument("--beat", type=float, default=4.0, help="Seconds per before/after beat")
     p.add_argument("--cta", type=float, default=2.5, help="Seconds for the CTA card")
     build(p.parse_args())
