@@ -81,3 +81,17 @@ NEXT: Phase 3 copy.json at drain time (orchestrator prompt already
 writes copyPack), Phase 5 posting (GHL/GBP/YouTube), Phase 6 Veo 3.1
 generative reveals (needs GEMINI_API_KEY + MOTION_BUDGET_USD_MONTH),
 Phase 7 multi-format export in the worker, Phase 8 Windsor.ai loop.
+
+## 2026-10-11 — session 1 addendum
+
+- Queue-drain routine rebuilt as trig_017vxykMXT4JawZmgdjLCq6g, bound to
+  the build session (persist_session) so every run holds the Drive,
+  Render and dashboard connectors — the fresh-session connector gap is
+  closed without the Routines UI. First fire: Mon 6:55am PT.
+- RENDER_SHARED_SECRET deliberately deferred: with it unset the worker
+  rejects every POST /render (secure by default), and the production
+  kick path (RENDER_JOB env var) doesn't use it. Set it in the Render
+  dashboard only when the Make.com bridge gets built.
+- Remaining human steps are exactly two credential pastes, both doable
+  from a phone: DATABASE_URL on the worker, GEMINI_API_KEY on the worker
+  (+ optionally in the Claude environment for orchestrator-side renders).
