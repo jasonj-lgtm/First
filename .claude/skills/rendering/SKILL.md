@@ -21,9 +21,49 @@ on-brand with a real Hillsboro CTA from CompanyCam.
 Backbone (all live): scanner over 362 job folders · YouTube bridge · brand
 template · QA rubric.
 
-**Where the tools run:** a portable v2 reveal builder lives in this repo at
-`tools/reveal_builder.py` (needs `ffmpeg` + Pillow) — use it to build reveals
-from any environment:
+**Where the tools run (production = standalone, no laptop):**
+- **Orchestrator** — a Claude cloud session (hourly routine "T1P Render
+  Queue Drain"): judgment only — vision pair-pick, hook, copy pack, QA,
+  dashboard writes.
+- **Worker** — Render.com `t1p-render-worker` (srv-db5requ7bikc73dq8f9g,
+  https://t1p-render-worker.onrender.com), Docker: ffmpeg engines from
+  this repo. Job kick: the orchestrator sets env var `RENDER_JOB` via the
+  Render connector (direct HTTPS to *.onrender.com is egress-blocked in
+  cloud sessions); callers with real egress may instead POST /render with
+  header `X-T1P-Signature: hex(hmac_sha256(RENDER_SHARED_SECRET, body))`.
+  Job JSON: `{id, engine: reveal|preview, city, hook?, color?, colorHex?,
+  formats?, reviews?, photos: {before_url, after_url} | {photo_url}}`.
+  Results: Postgres `t1p-render-jobs` (dpg-db5reaks728c738povmg-a), table
+  `render_jobs(id, payload, status, files, log, …)`, read back with
+  `query_render_postgres`; output files at the worker's public /files URLs.
+- **Env vars (names only, never values):** `GEMINI_API_KEY`,
+  `RENDER_SHARED_SECRET`, `DATABASE_URL`, `PUBLIC_BASE_URL`,
+  `MOTION_BUDGET_USD_MONTH`, `BIRDEYE_API_KEY` (live reviews, Phase 3),
+  GBP / YouTube / GHL credentials (Phase 5).
+- `render_core/` is shared by every engine: `brand.json` (single brand
+  source), `palettes.json` (single palette source — Studio presets +
+  Chip 3.0 PNW palettes), `color_engine.py` (`recolor(photo, palette_id,
+  surfaces)` — the one recolor; always stamps the "Color concept"
+  disclosure).
+- **Status flow:** Queued → Rendering → Needs approval → Approved |
+  Changes requested → Posted (approver default Juan Castillo; "Changes
+  requested" re-queues with the note). Nothing posts without a human yes.
+- **copy.json / copyPack schema:** caption_ig, caption_fb,
+  caption_linkedin, gbp_post (≤1,500 chars + CTA button suggestion),
+  alt_text, keywords, hashtags (max 5, local first).
+- **Engine options:** Reveal · Generative reveal (Veo 3.1, Phase 6) ·
+  AI Color Preview · Clip (OpusClip bridge).
+- **Extra QA checks (with the rubric):** hook burned in 0–1.5s · live
+  review count (Birdeye/GBP; cached 351 + flag if unreachable) · licensed
+  or original audio only (assets/music/licensed/) · "Color concept" label
+  on every AI preview · CTA card has city + CCB #249983.
+- **Trigger phrases:** "make a reveal from [job]" · "run the render
+  queue" · "approve renders" · "post approved renders" · "render
+  performance report".
+
+Local dev only: the original content-factory box (scanner, `auto_pair`,
+OpusClip `run_clip_job`) at `http://127.0.0.1:8787` — never a production
+dependency. The portable builder:
 
 ```bash
 python3 tools/reveal_builder.py \
@@ -31,12 +71,11 @@ python3 tools/reveal_builder.py \
   --music track.mp3 [--logo logo.png] [--out reveal.mp4]
 ```
 
-It produces the full v2 render: Ken Burns motion on both beats (zoom-in on
-before, zoom-out on after), blue-gradient chips that fade/slide in, music bed
-with fade-out, and the navy CTA/proof card. The original content-factory
-environment (scanner over job folders, `auto_pair`, OpusClip `run_clip_job`)
-runs locally at `http://127.0.0.1:8787`; the vision-judgment and QA steps of
-this playbook apply in both places.
+It produces the full v2 render plus the v3 upgrades: Ken Burns motion,
+swipe (wipeleft) transition, `--hook` burn-in for the first 1.5s,
+blue-gradient chips, auto-picked licensed music, and the navy CTA/proof
+card. The vision-judgment and QA steps of this playbook apply wherever it
+runs.
 
 ## Reveal pipeline (before/after)
 
