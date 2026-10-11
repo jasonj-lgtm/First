@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""T1P render worker — the deterministic half of the pipeline (Phase 2).
+
+Runs on Render.com. The Claude orchestrator is the judgment half; this
+service does the heavy, repeatable work: download the chosen photos, run
+the repo engines (reveal_builder / color_engine), and publish results.
+
+Job channels (both feed the same processor):
+  1. Env kick — the orchestrator cannot reach this service over HTTPS
+     from its sandbox, but it CAN set env vars through the Render
+     connector, which redeploys the service. On boot we read RENDER_JOB
+     (a JSON job) and process it if its id hasn't been done yet.
+  2. POST /render — HMAC-signed (X-T1P-Signature, hex sha256 HMAC of the
+     raw body with RENDER_SHARED_SECRET) for callers with real egress
+     (Make.com bridge, local dev).
+
+Results: rows in Render Postgres (DATABASE_URL) — the one store the
+orchestrator can read back through the connector — and files served from
+GET /files/<name> on this service's public URL (phone-clickable).
+
+Env: DATABASE_URL, RENDER_SHARED_SECRET, RENDER_JOB (optional kick),
+     PUBLIC_BASE_URL (e.g. https://t1p-render-worker.onrender.com),
+     GEMINI_API_KEY (optional — photoreal color previews),
+     OUTPUT_DIR (default /var/data/renders).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+import subprocess
+import sys
+import threading
+import traceback
+from datetime import datetime, timezone
+from pathlib import Path
+
+import psycopg
+import requests
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = Path(os.environ.get("OUTPUT_DIR", "/var/data/renders"))
+OUT.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI(title="T1P render worker")
+
+
+def db():
+    return psycopg.connect(os.environ["DATABASE_URL"], autocommit=True)
+
+
+def ensure_table() -> None:
+    with db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS render_jobs (
+              id text PRIMARY KEY,
+              payload jsonb NOT NULL,
+              status text NOT NULL,
+              files jsonb NOT NULL DEFAULT '[]',
+              log text NOT NULL DEFAULT '',
+              created timestamptz NOT NULL DEFAULT now(),
+              updated timestamptz NOT NULL DEFAULT now()
+            )""")
+
+
+def upsert(job_id: str, **fields) -> None:
+    sets = ", ".join(f"{k} = %s" for k in fields) + ", updated = now()"
+    with db() as conn:
+        conn.execute(
+            f"""INSERT INTO render_jobs (id, payload, status)
+                VALUES (%s, '{{}}', 'queued')
+                ON CONFLICT (id) DO NOTHING""", (job_id,))
+        conn.execute(
+            f"UPDATE render_jobs SET {sets} WHERE id = %s",
+            (*[json.dumps(v) if isinstance(v, (dict, list)) else v
+               for v in fields.values()], job_id))
+
+
+def fetch(url: str, dst: Path) -> Path:
+    r = requests.get(url, timeout=120, allow_redirects=True)
+    r.raise_for_status()
+    dst.write_bytes(r.content)
+    return dst
+
+
+def public_url(name: str) -> str:
+    base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    return f"{base}/files/{name}" if base else f"/files/{name}"
+
+
+def process(job: dict) -> None:
+    """Run one job end to end; record status + file links in Postgres."""
+    jid = job["id"]
+    upsert(jid, payload=job, status="rendering")
+    try:
+        workdir = OUT / jid
+        workdir.mkdir(parents=True, exist_ok=True)
+        files: list[dict] = []
+        engine = job.get("engine", "reveal")
+        city = job.get("city", "Portland")
+        logo = ROOT / "assets" / "brand" / "logo.png"
+        logo_args = ["--logo", str(logo)] if logo.exists() else []
+
+        if engine == "reveal":
+            before = fetch(job["photos"]["before_url"], workdir / "before.jpg")
+            after = fetch(job["photos"]["after_url"], workdir / "after.jpg")
+            out = workdir / f"{jid}_reveal.mp4"
+            cmd = [sys.executable, str(ROOT / "tools" / "reveal_builder.py"),
+                   "--before", str(before), "--after", str(after),
+                   "--city", city, "--out", str(out), *logo_args]
+            if job.get("hook"):
+                cmd += ["--hook", job["hook"]]
+            if job.get("reviews"):
+                cmd += ["--reviews", str(job["reviews"])]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode != 0:
+                raise RuntimeError(r.stderr[-1500:])
+            files.append({"name": out.name, "url": public_url(f"{jid}/{out.name}"),
+                          "kind": "reel_9x16"})
+
+        elif engine == "preview":
+            photo = fetch(job["photos"]["photo_url"], workdir / "photo.jpg")
+            cmd = [sys.executable, str(ROOT / "tools" / "preview_engine.py"),
+                   "--photo", str(photo),
+                   "--color", job.get("color", "custom"),
+                   "--hex", (job.get("colorHex") or "#79746D").lstrip("#"),
+                   "--city", city, "--out-dir", str(workdir), *logo_args]
+            music = ROOT / "assets" / "music" / "licensed" / "t1p-bed-01.wav"
+            if music.exists() and "reel" in job.get("formats", ["reel"]):
+                cmd += ["--music", str(music)]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode != 0:
+                raise RuntimeError(r.stderr[-1500:])
+            for name, kind in [("preview_recolor.png", "concept_image"),
+                               ("preview_card.jpg", "card_4x5"),
+                               ("preview_reveal.mp4", "reel_9x16")]:
+                if (workdir / name).exists():
+                    files.append({"name": name, "url": public_url(f"{jid}/{name}"),
+                                  "kind": kind})
+        else:
+            raise ValueError(f"engine {engine!r} not handled by the worker "
+                             "(clip jobs stay on the OpusClip bridge)")
+
+        upsert(jid, status="done", files=files,
+               log=f"ok {datetime.now(timezone.utc).isoformat()}")
+    except Exception as e:  # noqa: BLE001 — job errors land in the row
+        upsert(jid, status="error", log=f"{e}\n{traceback.format_exc()[-1200:]}")
+
+
+@app.on_event("startup")
+def boot() -> None:
+    ensure_table()
+    raw = os.environ.get("RENDER_JOB", "").strip()
+    if not raw:
+        return
+    try:
+        job = json.loads(raw)
+    except ValueError:
+        return
+    jid = job.get("id")
+    if not jid:
+        return
+    with db() as conn:
+        row = conn.execute("SELECT status FROM render_jobs WHERE id = %s",
+                           (jid,)).fetchone()
+    if row and row[0] in ("done", "rendering"):
+        return  # already handled; env kick is at-least-once
+    threading.Thread(target=process, args=(job,), daemon=True).start()
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
+
+
+@app.post("/render")
+async def render(request: Request) -> JSONResponse:
+    body = await request.body()
+    secret = os.environ.get("RENDER_SHARED_SECRET", "")
+    sig = request.headers.get("X-T1P-Signature", "")
+    want = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not secret or not hmac.compare_digest(sig, want):
+        raise HTTPException(401, "bad signature")
+    job = json.loads(body)
+    if not job.get("id"):
+        raise HTTPException(400, "job needs an id")
+    threading.Thread(target=process, args=(job,), daemon=True).start()
+    return JSONResponse({"accepted": job["id"]})
+
+
+@app.get("/jobs/{jid}")
+def job_status(jid: str) -> dict:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT status, files, log, updated FROM render_jobs WHERE id = %s",
+            (jid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "unknown job")
+    return {"id": jid, "status": row[0], "files": row[1],
+            "log": row[2], "updated": row[3].isoformat()}
+
+
+@app.get("/files/{jid}/{name}")
+def file(jid: str, name: str) -> FileResponse:
+    p = (OUT / jid / name).resolve()
+    if not p.is_file() or OUT.resolve() not in p.parents:
+        raise HTTPException(404, "no such file")
+    return FileResponse(p)
