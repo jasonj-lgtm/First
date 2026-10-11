@@ -147,18 +147,32 @@ def process(job: dict) -> None:
 
         upsert(jid, status="done", files=files,
                log=f"ok {datetime.now(timezone.utc).isoformat()}")
+        print("T1P_RESULT " + json.dumps({"id": jid, "status": "done",
+                                          "files": files}), flush=True)
     except Exception as e:  # noqa: BLE001 — job errors land in the row
         upsert(jid, status="error", log=f"{e}\n{traceback.format_exc()[-1200:]}")
+        print("T1P_RESULT " + json.dumps({"id": jid, "status": "error",
+                                          "error": str(e)[:600]}), flush=True)
 
 
 @app.on_event("startup")
 def boot() -> None:
-    if not os.environ.get("DATABASE_URL"):
+    db_ok = False
+    if os.environ.get("DATABASE_URL"):
+        try:
+            ensure_table()
+            db_ok = True
+        except Exception as e:  # noqa: BLE001
+            print(f"T1P_BOOT db_error={e}", flush=True)
+    else:
         print("WARNING: DATABASE_URL not set — job state disabled until the "
               "Internal Database URL from t1p-render-jobs is pasted into "
               "this service's env vars.")
+    print("T1P_BOOT " + json.dumps({
+        "db": db_ok, "gemini": bool(os.environ.get("GEMINI_API_KEY"))}),
+        flush=True)
+    if not db_ok:
         return
-    ensure_table()
     raw = os.environ.get("RENDER_JOB", "").strip()
     if not raw:
         return
