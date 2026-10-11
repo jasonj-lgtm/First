@@ -182,6 +182,43 @@ def health() -> dict:
     return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
 
+@app.get("/")
+def home():
+    """Human-friendly status page for phone checks."""
+    from fastapi.responses import HTMLResponse
+
+    db_ok, jobs = False, "–"
+    if os.environ.get("DATABASE_URL"):
+        try:
+            with db() as conn:
+                jobs = conn.execute("SELECT count(*) FROM render_jobs").fetchone()[0]
+            db_ok = True
+        except Exception:
+            db_ok = False
+    gemini = bool(os.environ.get("GEMINI_API_KEY"))
+    row = lambda label, ok, extra="": (
+        f"<div style='padding:10px 14px;border-radius:10px;background:#0d2148;"
+        f"display:flex;justify-content:space-between;gap:12px'><span>{label}</span>"
+        f"<b style='color:{'#4ADE80' if ok else '#FBBF24'}'>"
+        f"{'READY' if ok else 'NEEDS SETUP'}{extra}</b></div>")
+    html = (
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<body style='margin:0;background:#05132D;color:#EDF0F2;"
+        "font-family:system-ui;padding:28px 18px'>"
+        "<div style='max-width:460px;margin:0 auto;display:flex;"
+        "flex-direction:column;gap:10px'>"
+        "<h2 style='margin:0 0 2px;letter-spacing:.04em'>T1P RENDER WORKER</h2>"
+        "<div style='color:#8CA3C9;margin-bottom:10px'>That 1 Painter · Oregon — "
+        "deterministic render engine. Jobs arrive from the Claude orchestrator; "
+        "nothing to do on this page.</div>"
+        + row("Service", True)
+        + row("Database (DATABASE_URL)", db_ok,
+              f" · {jobs} jobs" if db_ok else "")
+        + row("Gemini photoreal (GEMINI_API_KEY)", gemini)
+        + "</div></body>")
+    return HTMLResponse(html)
+
+
 @app.post("/render")
 async def render(request: Request) -> JSONResponse:
     body = await request.body()
