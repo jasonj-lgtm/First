@@ -33,26 +33,22 @@ Produces in --out-dir:
 from __future__ import annotations
 
 import argparse
-import base64
-import json
-import os
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-NAVY = (11, 27, 58)
-COBALT = (37, 99, 235)
-SKY = (56, 189, 248)
-GOLD = (251, 191, 36)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from render_core.color_engine import BRAND, recolor as core_recolor  # noqa: E402
+
+NAVY = tuple(int(BRAND["colors"]["navy"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+COBALT = tuple(int(BRAND["colors"]["cobalt"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+SKY = tuple(int(BRAND["colors"]["azure"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+GOLD = tuple(int(BRAND["colors"]["gold"].lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
 SLATE = (148, 163, 184)
 
-FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
+FONT_CANDIDATES = list(BRAND["font"]["files"])
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -60,101 +56,6 @@ def load_font(size: int) -> ImageFont.FreeTypeFont:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
-
-
-# ----------------------------------------------------------------------
-# Backends
-# ----------------------------------------------------------------------
-
-def recolor_gemini(photo: Path, color_name: str, hex_code: str, dst: Path) -> None:
-    """Photoreal recolor through the Gemini image-editing API."""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        sys.exit(
-            "GEMINI_API_KEY is not set. Add it as an environment secret "
-            "(Claude Code environment settings) and re-run, or use "
-            "--backend local for a demo render."
-        )
-
-    img = ImageOps.exif_transpose(Image.open(photo)).convert("RGB")
-    img.thumbnail((1536, 1536))  # keep request small; API returns ~1MP anyway
-    from io import BytesIO
-
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=92)
-    b64 = base64.b64encode(buf.getvalue()).decode()
-
-    prompt = (
-        "Repaint ONLY the painted siding and body of this house in the color "
-        f"{color_name} (hex #{hex_code}). Keep the trim, roof, windows, doors, "
-        "landscaping, sky, driveway and everything else exactly as they are. "
-        "Photorealistic, same lighting, same camera angle. Do not add or "
-        "remove any objects."
-    )
-    body = json.dumps({
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
-            ]
-        }],
-        "generationConfig": {"responseModalities": ["IMAGE"]},
-    }).encode()
-
-    req = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash-image:generateContent",
-        data=body,
-        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        payload = json.load(resp)
-
-    for part in payload["candidates"][0]["content"]["parts"]:
-        data = part.get("inlineData") or part.get("inline_data")
-        if data:
-            dst.write_bytes(base64.b64decode(data["data"]))
-            return
-    sys.exit("Gemini returned no image — response: " + json.dumps(payload)[:500])
-
-
-def recolor_local(photo: Path, hex_code: str, dst: Path) -> None:
-    """No-AI fallback: shift pixels near the dominant siding hue to the
-    target color, keeping per-pixel luminance so texture survives.
-    Rough by design — always watermarked DEMO MODE by the caller."""
-    import colorsys
-
-    img = ImageOps.exif_transpose(Image.open(photo)).convert("RGB")
-    hsv = img.convert("HSV")
-    px_h, px_s, px_v = [ch.load() for ch in hsv.split()]
-    w, h = img.size
-
-    # Sample the dominant hue in the middle band of the image (siding zone).
-    from collections import Counter
-
-    counts: Counter[int] = Counter()
-    for y in range(int(h * 0.25), int(h * 0.75), 4):
-        for x in range(0, w, 4):
-            if px_s[x, y] > 40 and 40 < px_v[x, y] < 240:
-                counts[px_h[x, y] // 8] += 1
-    if not counts:
-        sys.exit("local backend: could not find a dominant siding hue")
-    dom = counts.most_common(1)[0][0] * 8 + 4
-
-    tr, tg, tb = (int(hex_code[i:i + 2], 16) for i in (0, 2, 4))
-    th, ts, tv = colorsys.rgb_to_hsv(tr / 255, tg / 255, tb / 255)
-
-    out = img.copy()
-    op = out.load()
-    for y in range(h):
-        for x in range(w):
-            hue, sat, val = px_h[x, y], px_s[x, y], px_v[x, y]
-            dh = min(abs(hue - dom), 256 - abs(hue - dom))
-            if dh <= 14 and sat > 30 and val > 30:
-                # keep texture: scale target value by pixel luminance
-                r, g, b = colorsys.hsv_to_rgb(th, ts, (val / 255) * max(tv, 0.35) / 0.62)
-                op[x, y] = (int(r * 255), int(g * 255), int(b * 255))
-    out.save(dst)
 
 
 # ----------------------------------------------------------------------
@@ -257,10 +158,8 @@ def main() -> None:
     demo = args.backend == "local"
 
     recolor = out_dir / "preview_recolor.png"
-    if demo:
-        recolor_local(photo, hex_code, recolor)
-    else:
-        recolor_gemini(photo, args.color, hex_code, recolor)
+    core_recolor(photo, color_name=args.color, hex_code=hex_code,
+                 out_path=recolor, backend=args.backend)
     print(f"recolor -> {recolor}")
 
     card = out_dir / "preview_card.jpg"

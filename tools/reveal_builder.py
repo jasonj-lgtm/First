@@ -22,6 +22,8 @@ Requires: ffmpeg on PATH, Pillow.
 from __future__ import annotations
 
 import argparse
+import json
+import random
 import shutil
 import subprocess
 import sys
@@ -33,19 +35,35 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 W, H = 1080, 1920
 FPS = 30
 
-# Brand palette (navy/cobalt; chips use the blue logo-gradient convention).
-NAVY = (11, 25, 48)
-BLUE_A = (30, 111, 224)   # cobalt
-BLUE_B = (74, 168, 255)   # lighter logo blue
-WHITE = (255, 255, 255)
-GOLD = (255, 200, 64)     # star accent on the proof line
+REPO = Path(__file__).resolve().parent.parent
+MUSIC_DIR = REPO / "assets" / "music" / "licensed"
 
-FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-    "C:/Windows/Fonts/arialbd.ttf",
-]
+
+def _hex(c: str) -> tuple[int, int, int]:
+    c = c.lstrip("#")
+    return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+
+# Brand tokens come from render_core/brand.json (the single brand source);
+# hardcoded values below are only the fallback if that file is missing.
+try:
+    _B = json.loads((REPO / "render_core" / "brand.json").read_text())
+    _C = _B["colors"]
+    NAVY, BLUE_A, BLUE_B = _hex(_C["navy"]), _hex(_C["cobalt"]), _hex(_C["azure"])
+    GOLD = _hex(_C["gold"])
+    FONT_CANDIDATES = list(_B["font"]["files"])
+except Exception:
+    NAVY = (11, 25, 48)
+    BLUE_A = (30, 111, 224)
+    BLUE_B = (74, 168, 255)
+    GOLD = (255, 200, 64)
+    FONT_CANDIDATES = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "C:/Windows/Fonts/arialbd.ttf",
+    ]
+WHITE = (255, 255, 255)
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -139,8 +157,24 @@ def make_cta_card(city: str, reviews: str, ccb: str, logo: Path | None, dst: Pat
     y += 170
 
     proof_font = load_font(52)
-    text = f"★ {reviews} FIVE-STAR REVIEWS ★"
-    draw.text(((W - draw.textlength(text, font=proof_font)) / 2, y), text, font=proof_font, fill=GOLD)
+    text = f"{reviews} FIVE-STAR REVIEWS"
+    tw = draw.textlength(text, font=proof_font)
+    star_r, gap = 24, 26
+    tx = (W - tw) / 2
+    draw.text((tx, y), text, font=proof_font, fill=GOLD)
+
+    def star(cx: float, cy: float, r: float) -> None:
+        import math
+        pts = []
+        for i in range(10):
+            rr = r if i % 2 == 0 else r * 0.42
+            ang = -math.pi / 2 + i * math.pi / 5
+            pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
+        draw.polygon(pts, fill=GOLD)
+
+    cy = y + proof_font.size * 0.55
+    star(tx - gap - star_r, cy, star_r)
+    star(tx + tw + gap + star_r, cy, star_r)
     y += 110
 
     ccb_font = load_font(44)
@@ -148,6 +182,48 @@ def make_cta_card(city: str, reviews: str, ccb: str, logo: Path | None, dst: Pat
     draw.text(((W - draw.textlength(text, font=ccb_font)) / 2, y), text, font=ccb_font, fill=(148, 163, 184))
 
     card.save(dst)
+
+
+def make_hook_card(text: str, dst: Path) -> None:
+    """Hook line burned into the first 1.5s (azure accent bar + bold line),
+    rendered as a transparent full-width PNG to avoid drawtext escaping."""
+    font = load_font(72)
+    pad = 36
+    max_w = W - 120
+    words, lines, cur = text.split(), [], ""
+    for w_ in words:
+        trial = (cur + " " + w_).strip()
+        if font.getlength(trial) <= max_w:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = w_
+    if cur:
+        lines.append(cur)
+    lh = int(font.size * 1.22)
+    ch = pad * 2 + lh * len(lines)
+    card = Image.new("RGBA", (W, ch + 20), (0, 0, 0, 0))
+    d = ImageDraw.Draw(card)
+    d.rounded_rectangle((40, 0, W - 40, ch), radius=26, fill=NAVY + (215,))
+    d.rectangle((40, 0, 52, ch), fill=BLUE_B + (255,))
+    y = pad - 4
+    for ln in lines:
+        d.text((90, y), ln, font=font, fill=WHITE)
+        y += lh
+    card.save(dst)
+
+
+def pick_music(music_arg: str | None) -> str | None:
+    """Explicit --music wins; otherwise pick from assets/music/licensed/.
+    Never reuse audio lifted from past reels."""
+    if music_arg:
+        return music_arg
+    if MUSIC_DIR.is_dir():
+        tracks = [p for p in MUSIC_DIR.iterdir()
+                  if p.suffix.lower() in (".mp3", ".m4a", ".wav", ".aac")]
+        if tracks:
+            return str(random.choice(tracks))
+    return None
 
 
 def run(cmd: list[str]) -> None:
@@ -162,7 +238,10 @@ def build(args: argparse.Namespace) -> None:
 
     out = Path(args.out)
     beat, cta = args.beat, args.cta
-    total = beat * 2 + cta
+    swipe = args.transition == "swipe"
+    xd = 0.45 if swipe else 0.0  # crossfade overlap
+    total = beat * 2 + cta - xd
+    music = pick_music(args.music)
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -170,6 +249,8 @@ def build(args: argparse.Namespace) -> None:
         fit_photo(Path(args.after), tmp / "after.png")
         make_chip(args.label_before.upper(), tmp / "chip_before.png")
         make_chip(args.label_after.upper(), tmp / "chip_after.png")
+        if args.hook:
+            make_hook_card(args.hook, tmp / "hook.png")
         make_cta_card(
             args.city, str(args.reviews), args.ccb,
             Path(args.logo) if args.logo else None, tmp / "cta.png",
@@ -200,10 +281,26 @@ def build(args: argparse.Namespace) -> None:
         filters = (
             f"[0:v]{zoom_in}[b];[1:v]{zoom_out}[a];[2:v]{cta_zoom}[c];"
             f"[3:v]{chip_anim}[cb];[4:v]{chip_anim}[ca];"
-            f"[b][cb]overlay={chip_pos}:shortest=1[bv];"
-            f"[a][ca]overlay={chip_pos}:shortest=1[av];"
-            f"[bv][av][c]concat=n=3:v=1:a=0[v]"
+            f"[b][cb]overlay={chip_pos}:shortest=1[bv0];"
+            f"[a][ca]overlay={chip_pos}:shortest=1[av]"
         )
+        n_in = 5
+        if args.hook:
+            # Hook card: visible from frame 1, gone by 1.5s (fade out .3s).
+            filters += (
+                f";[{n_in}:v]format=rgba,fade=t=out:st=1.2:d=0.3:alpha=1[hk];"
+                f"[bv0][hk]overlay=x=0:y=main_h*0.12:enable='lt(t,1.5)'[bv]"
+            )
+            n_in += 1
+        else:
+            filters += ";[bv0]null[bv]"
+        if swipe:
+            filters += (
+                f";[bv][av]xfade=transition=wipeleft:duration={xd}"
+                f":offset={beat - xd}[ba];[ba][c]concat=n=2:v=1:a=0[v]"
+            )
+        else:
+            filters += ";[bv][av][c]concat=n=3:v=1:a=0[v]"
 
         cmd = [
             "ffmpeg", "-y",
@@ -213,14 +310,16 @@ def build(args: argparse.Namespace) -> None:
             "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_before.png"),
             "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_after.png"),
         ]
-        if args.music:
-            cmd += ["-stream_loop", "-1", "-i", str(args.music)]
+        if args.hook:
+            cmd += ["-loop", "1", "-t", str(beat), "-i", str(tmp / "hook.png")]
+        if music:
+            cmd += ["-stream_loop", "-1", "-i", str(music)]
             filters += (
-                f";[5:a]atrim=0:{total},afade=t=in:st=0:d=0.5,"
+                f";[{n_in}:a]atrim=0:{total},afade=t=in:st=0:d=0.5,"
                 f"afade=t=out:st={total - 0.8}:d=0.8[aud]"
             )
         cmd += ["-filter_complex", filters, "-map", "[v]"]
-        if args.music:
+        if music:
             cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
         cmd += [
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS),
@@ -229,10 +328,12 @@ def build(args: argparse.Namespace) -> None:
         run(cmd)
 
     print(f"Built {out} — {total:.1f}s, {W}x{H}, "
-          f"{'music bed' if args.music else 'SILENT'}")
-    if not args.music:
-        print("WARNING: no --music given. The v2 brand standard says never "
-              "ship silent — add a music bed before posting.")
+          f"{'music bed' if music else 'SILENT'}"
+          f"{', hook burned in' if args.hook else ''}"
+          f"{', swipe transition' if swipe else ''}")
+    if not music:
+        print("WARNING: no music found (none passed, nothing in "
+              f"{MUSIC_DIR}). The v2 brand standard says never ship silent.")
     print("QA next: score against the rubric in .claude/skills/rendering/SKILL.md")
 
 
@@ -248,6 +349,9 @@ def main() -> None:
     p.add_argument("--ccb", default="249983", help="CCB license number")
     p.add_argument("--label-before", default="BEFORE", help="Chip text for the first beat")
     p.add_argument("--label-after", default="AFTER", help="Chip text for the second beat")
+    p.add_argument("--hook", help="Hook line burned in for the first 1.5s (max ~7 words)")
+    p.add_argument("--transition", choices=["swipe", "cut"], default="swipe",
+                   help="Before->after transition (swipe = ffmpeg wipeleft, default)")
     p.add_argument("--beat", type=float, default=4.0, help="Seconds per before/after beat")
     p.add_argument("--cta", type=float, default=2.5, help="Seconds for the CTA card")
     build(p.parse_args())
