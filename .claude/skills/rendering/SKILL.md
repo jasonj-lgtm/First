@@ -100,3 +100,24 @@ reels ending with **no CTA/city/proof**, and automated renders shipping
 - "make a reveal from [job name]" → reveal pipeline above.
 - "clip [talking video]" → OpusClip auto-loop (`run_clip_job`).
 - "batch a week's worth" → batch mode (top 5 jobs → 5 reveals for approval).
+
+## Render Studio dashboard (the control panel)
+
+Live at **https://claude.ai/artifact/WEiFRiBnGg6ZFhbiNBRmyi** — the team
+queues render jobs there; this skill is what drains the queue.
+
+- The page's shared database holds everything: `requests` (one doc per
+  render job: job, city, engine `reveal|preview|clip`, color/colorHex,
+  formats, priority, folder, notes, status
+  `queued|rendering|delivered|needs_input|canceled`, qa, resultNote) and
+  `meta/status` (pipeline health chips: drive/ffmpeg/gemini/opusclip,
+  review count).
+- **"Run the render queue"** means: `ArtifactData` query `requests` where
+  status == queued → for each, set status `rendering`, run the matching
+  engine from this skill (reveal pipeline, `tools/preview_engine.py`, or
+  OpusClip), QA it, deliver the files, then update the doc to `delivered`
+  with `qa` + `resultNote` (pin writes with `if_version`).
+- Keep `meta/status` honest whenever backends change (e.g. GEMINI_API_KEY
+  added → `gemini: "ok"`; refresh the live review count when available).
+- The page itself can verify Drive job folders (viewer's Google Drive
+  connector); a request may carry a confirmed `folder` {id, title}.
