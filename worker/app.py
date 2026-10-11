@@ -67,6 +67,15 @@ def ensure_table() -> None:
             )""")
 
 
+def safe_upsert(job_id: str, **fields) -> None:
+    """DB write that never kills the job thread — results must still reach
+    the logs (the orchestrator's channel) when Postgres is down."""
+    try:
+        upsert(job_id, **fields)
+    except Exception as e:  # noqa: BLE001
+        print(f"T1P_DB_WARN {job_id} {e}", flush=True)
+
+
 def upsert(job_id: str, **fields) -> None:
     sets = ", ".join(f"{k} = %s" for k in fields) + ", updated = now()"
     with db() as conn:
@@ -78,6 +87,24 @@ def upsert(job_id: str, **fields) -> None:
             f"UPDATE render_jobs SET {sets} WHERE id = %s",
             (*[json.dumps(v) if isinstance(v, (dict, list)) else v
                for v in fields.values()], job_id))
+
+
+def validate(job: dict) -> list[str]:
+    """Names every problem with a job payload (empty list = valid)."""
+    problems = []
+    engine = job.get("engine", "reveal")
+    if engine == "clip":
+        problems.append("engine 'clip' runs on the OpusClip bridge, not this worker")
+    elif engine not in ("reveal", "preview"):
+        problems.append(f"unknown engine {engine!r}")
+    photos = job.get("photos") or {}
+    if engine == "reveal" and not (photos.get("before_url") and photos.get("after_url")):
+        problems.append("reveal needs photos.before_url and photos.after_url")
+    if engine == "preview" and not photos.get("photo_url"):
+        problems.append("preview needs photos.photo_url")
+    if not isinstance(job.get("city", ""), str):
+        problems.append("city must be a string")
+    return problems
 
 
 def fetch(url: str, dst: Path) -> Path:
@@ -95,7 +122,16 @@ def public_url(name: str) -> str:
 def process(job: dict) -> None:
     """Run one job end to end; record status + file links in Postgres."""
     jid = job["id"]
-    upsert(jid, payload=job, status="rendering")
+    print(f"T1P_START {jid}", flush=True)
+    problems = validate(job)
+    if problems:
+        print("T1P_RESULT " + json.dumps(
+            {"id": jid, "status": "error",
+             "error": "invalid job: " + ", ".join(problems)}), flush=True)
+        safe_upsert(jid, payload=job, status="error",
+                    log="validation: " + ", ".join(problems))
+        return
+    safe_upsert(jid, payload=job, status="rendering")
     try:
         workdir = OUT / jid
         workdir.mkdir(parents=True, exist_ok=True)
@@ -145,14 +181,16 @@ def process(job: dict) -> None:
             raise ValueError(f"engine {engine!r} not handled by the worker "
                              "(clip jobs stay on the OpusClip bridge)")
 
-        upsert(jid, status="done", files=files,
-               log=f"ok {datetime.now(timezone.utc).isoformat()}")
         print("T1P_RESULT " + json.dumps({"id": jid, "status": "done",
                                           "files": files}), flush=True)
+        (workdir / ".done").write_text("ok")
+        safe_upsert(jid, status="done", files=files,
+                    log=f"ok {datetime.now(timezone.utc).isoformat()}")
     except Exception as e:  # noqa: BLE001 — job errors land in the row
-        upsert(jid, status="error", log=f"{e}\n{traceback.format_exc()[-1200:]}")
         print("T1P_RESULT " + json.dumps({"id": jid, "status": "error",
                                           "error": str(e)[:600]}), flush=True)
+        safe_upsert(jid, status="error",
+                    log=f"{e}\n{traceback.format_exc()[-1200:]}")
 
 
 @app.on_event("startup")
@@ -183,11 +221,16 @@ def boot() -> None:
     jid = job.get("id")
     if not jid:
         return
-    with db() as conn:
-        row = conn.execute("SELECT status FROM render_jobs WHERE id = %s",
-                           (jid,)).fetchone()
-    if row and row[0] in ("done", "rendering"):
-        return  # already handled; env kick is at-least-once
+    if (OUT / jid / ".done").exists():
+        return  # this instance already rendered it (works with PG down)
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT status FROM render_jobs WHERE id = %s",
+                               (jid,)).fetchone()
+        if row and row[0] in ("done", "rendering"):
+            return  # already handled; env kick is at-least-once
+    except Exception:
+        pass  # no DB — the disk marker above is the only dedupe
     threading.Thread(target=process, args=(job,), daemon=True).start()
 
 

@@ -95,3 +95,23 @@ Phase 7 multi-format export in the worker, Phase 8 Windsor.ai loop.
 - Remaining human steps are exactly two credential pastes, both doable
   from a phone: DATABASE_URL on the worker, GEMINI_API_KEY on the worker
   (+ optionally in the Claude environment for orchestrator-side renders).
+
+## 2026-10-11 — PRP fixes (post-audit hardening)
+
+PRP verdict was NOT READY (57/90, capped by one critical). Fixes applied:
+- P0: worker emits T1P_START/T1P_RESULT independent of Postgres
+  (safe_upsert never kills the job thread) — silent-death branch closed.
+- P2: job payload validation with named problems; clip jobs rejected
+  with a pointer to the OpusClip bridge.
+- Boot dedupe now also uses a .done disk marker, so spin-down wakes
+  don't re-render when PG is unreachable.
+- Docker base pinned to python:3.12.8-slim.
+- Dashboard v3: Clip engine card disabled (COMING SOON), submit
+  double-queue guard.
+- Drain playbook hardened: rows-are-data injection doctrine, stale
+  "rendering">2h sweep, sequential kicks only, Drive share revocation
+  after render, Slack alert on error outcomes (channel TBD by Jason).
+- docs/eval-battery.md: 3 golden jobs + 2 adversarial rows + payload
+  fuzz table; run on every playbook/schema change.
+Remaining to SHIP WITH FIXES: DATABASE_URL paste (Jason), first
+photoreal run, worker plan upgrade before real volume.
