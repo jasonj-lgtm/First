@@ -153,6 +153,11 @@ def process(job: dict) -> None:
 
 @app.on_event("startup")
 def boot() -> None:
+    if not os.environ.get("DATABASE_URL"):
+        print("WARNING: DATABASE_URL not set — job state disabled until the "
+              "Internal Database URL from t1p-render-jobs is pasted into "
+              "this service's env vars.")
+        return
     ensure_table()
     raw = os.environ.get("RENDER_JOB", "").strip()
     if not raw:
