@@ -302,11 +302,16 @@ def build(args: argparse.Namespace) -> None:
         else:
             filters += ";[bv][av][c]concat=n=3:v=1:a=0[v]"
 
+        # Memory: the three photo inputs are read ONCE (no -loop). zoompan
+        # turns a single frame into d output frames by itself; looping them
+        # fed it ~30 frames/s of 2x-upscaled (2160x3840) images per chain,
+        # which queued up and pushed a 12MP job past 900 MB — over the
+        # 512 MB Render instance limit (OOM kills 2026-10-11).
         cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "before.png"),
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "after.png"),
-            "-loop", "1", "-t", str(cta), "-i", str(tmp / "cta.png"),
+            "ffmpeg", "-y", "-filter_complex_threads", "1",
+            "-i", str(tmp / "before.png"),
+            "-i", str(tmp / "after.png"),
+            "-i", str(tmp / "cta.png"),
             "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_before.png"),
             "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_after.png"),
         ]
@@ -322,7 +327,12 @@ def build(args: argparse.Namespace) -> None:
         if music:
             cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
         cmd += [
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS),
+            # Cap encoder threads + lookahead: x264 sizes both from the
+            # host's visible CPU count, which on Render is far above the
+            # instance's share, and each buffered 1080x1920 frame costs RAM.
+            "-c:v", "libx264", "-threads", "2",
+            "-x264-params", "rc-lookahead=10:sliced-threads=1",
+            "-pix_fmt", "yuv420p", "-r", str(FPS),
             "-t", str(total), str(out),
         ]
         run(cmd)

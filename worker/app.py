@@ -225,10 +225,14 @@ def boot() -> None:
         return  # this instance already rendered it (works with PG down)
     try:
         with db() as conn:
-            row = conn.execute("SELECT status FROM render_jobs WHERE id = %s",
-                               (jid,)).fetchone()
-        if row and row[0] in ("done", "rendering"):
-            return  # already handled; env kick is at-least-once
+            row = conn.execute(
+                "SELECT status, updated > now() - interval '15 minutes' "
+                "FROM render_jobs WHERE id = %s", (jid,)).fetchone()
+        # env kick is at-least-once: skip finished jobs and ones another
+        # boot is actively rendering — but a 'rendering' row that has gone
+        # quiet means the instance died mid-job (e.g. an OOM kill), so retry.
+        if row and (row[0] == "done" or (row[0] == "rendering" and row[1])):
+            return
     except Exception:
         pass  # no DB — the disk marker above is the only dedupe
     threading.Thread(target=process, args=(job,), daemon=True).start()
