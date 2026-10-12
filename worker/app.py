@@ -159,7 +159,7 @@ def process(job: dict) -> None:
             before = resolve_photo(job["photos"], "before", workdir)
             after = resolve_photo(job["photos"], "after", workdir)
             out = workdir / f"{jid}_reveal.mp4"
-            cmd = [sys.executable, str(ROOT / "tools" / "reveal_builder.py"),
+            cmd = ["nice", "-n", "19", sys.executable, str(ROOT / "tools" / "reveal_builder.py"),
                    "--before", str(before), "--after", str(after),
                    "--city", city, "--out", str(out), *logo_args]
             if job.get("hook"):
@@ -174,7 +174,7 @@ def process(job: dict) -> None:
 
         elif engine == "preview":
             photo = resolve_photo(job["photos"], "photo", workdir)
-            cmd = [sys.executable, str(ROOT / "tools" / "preview_engine.py"),
+            cmd = ["nice", "-n", "19", sys.executable, str(ROOT / "tools" / "preview_engine.py"),
                    "--photo", str(photo),
                    "--color", job.get("color", "custom"),
                    "--hex", (job.get("colorHex") or "#79746D").lstrip("#"),

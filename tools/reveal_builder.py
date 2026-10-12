@@ -323,7 +323,8 @@ def build(args: argparse.Namespace) -> None:
         if music:
             cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
         cmd += [
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS),
+            "-c:v", "libx264", "-preset", "veryfast", "-threads", "1",
+            "-pix_fmt", "yuv420p", "-r", str(FPS),
             "-t", str(total), str(out),
         ]
         run(cmd)
