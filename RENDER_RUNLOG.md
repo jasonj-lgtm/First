@@ -115,3 +115,20 @@ PRP verdict was NOT READY (57/90, capped by one critical). Fixes applied:
   fuzz table; run on every playbook/schema change.
 Remaining to SHIP WITH FIXES: DATABASE_URL paste (Jason), first
 photoreal run, worker plan upgrade before real volume.
+
+## 2026-10-12 14:00 UTC — scheduled drain (paused mode)
+
+EXECUTED: read-and-tidy only — Jason's pause order overrides the kick
+steps. Stale acceptance row (rendering >11h, worker OOM) swept to
+needs_input with the diagnosis. New queued row found: "todd wycoff"
+(Oregon City, reveal) submitted from the dashboard 2026-10-11 21:08 —
+left queued pending the fix decision.
+TESTED: peak-RSS harness results (earlier): 2x/default 1129MB; 1.3x/
+default 967MB; 1.3x/1-thread 619MB — all over the 512MB free instance;
+root cause of both services' OOM emails.
+BLOCKED: Jason's decision — A: per-beat low-memory renderer (free);
+B: Standard 2GB instance ($25/mo); both recommended. Also pending OK to
+clear stuck RENDER_JOB env on both workers.
+FIXED: n/a this run (paused).
+NEXT: on decision — clear envs, ship fix, re-run acceptance + the
+Wycoff queue row.
