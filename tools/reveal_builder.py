@@ -258,9 +258,10 @@ def build(args: argparse.Namespace) -> None:
 
         beat_frames = int(beat * FPS)
         cta_frames = int(cta * FPS)
-        # Ken Burns: upscale 2x first so zoompan doesn't jitter, then slow
+        # Ken Burns: upscale ~1.3x first so zoompan doesn't jitter, then slow
         # centered zoom — in on the before, out on the after, for contrast.
-        upscale = f"scale={W * 2}:{H * 2}:flags=lanczos"
+        # (2x looked identical but OOM-killed ffmpeg on 512MB workers.)
+        upscale = f"scale={int(W * 1.3) // 2 * 2}:{int(H * 1.3) // 2 * 2}:flags=lanczos"
         zoom_in = (
             f"{upscale},zoompan=z='1+0.10*on/{beat_frames}':d={beat_frames}"
             f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}"
