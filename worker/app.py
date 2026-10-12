@@ -98,10 +98,12 @@ def validate(job: dict) -> list[str]:
     elif engine not in ("reveal", "preview"):
         problems.append(f"unknown engine {engine!r}")
     photos = job.get("photos") or {}
-    if engine == "reveal" and not (photos.get("before_url") and photos.get("after_url")):
-        problems.append("reveal needs photos.before_url and photos.after_url")
-    if engine == "preview" and not photos.get("photo_url"):
-        problems.append("preview needs photos.photo_url")
+    def has(kind):
+        return photos.get(f"{kind}_url") or photos.get(f"{kind}_path")
+    if engine == "reveal" and not (has("before") and has("after")):
+        problems.append("reveal needs photos.before_url/_path and after_url/_path")
+    if engine == "preview" and not has("photo"):
+        problems.append("preview needs photos.photo_url or photo_path")
     if not isinstance(job.get("city", ""), str):
         problems.append("city must be a string")
     return problems
@@ -112,6 +114,18 @@ def fetch(url: str, dst: Path) -> Path:
     r.raise_for_status()
     dst.write_bytes(r.content)
     return dst
+
+
+def resolve_photo(photos: dict, kind: str, workdir: Path) -> Path:
+    """A photo arrives as <kind>_url (fetched) or <kind>_path (bundled in
+    the image under the repo root — the no-credentials delivery channel)."""
+    path_spec = photos.get(f"{kind}_path")
+    if path_spec:
+        p = (ROOT / path_spec).resolve()
+        if ROOT not in p.parents or not p.is_file():
+            raise FileNotFoundError(f"{kind}_path not bundled: {path_spec}")
+        return p
+    return fetch(photos[f"{kind}_url"], workdir / f"{kind}.jpg")
 
 
 def public_url(name: str) -> str:
@@ -142,8 +156,8 @@ def process(job: dict) -> None:
         logo_args = ["--logo", str(logo)] if logo.exists() else []
 
         if engine == "reveal":
-            before = fetch(job["photos"]["before_url"], workdir / "before.jpg")
-            after = fetch(job["photos"]["after_url"], workdir / "after.jpg")
+            before = resolve_photo(job["photos"], "before", workdir)
+            after = resolve_photo(job["photos"], "after", workdir)
             out = workdir / f"{jid}_reveal.mp4"
             cmd = [sys.executable, str(ROOT / "tools" / "reveal_builder.py"),
                    "--before", str(before), "--after", str(after),
@@ -159,7 +173,7 @@ def process(job: dict) -> None:
                           "kind": "reel_9x16"})
 
         elif engine == "preview":
-            photo = fetch(job["photos"]["photo_url"], workdir / "photo.jpg")
+            photo = resolve_photo(job["photos"], "photo", workdir)
             cmd = [sys.executable, str(ROOT / "tools" / "preview_engine.py"),
                    "--photo", str(photo),
                    "--color", job.get("color", "custom"),
