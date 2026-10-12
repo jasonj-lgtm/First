@@ -223,8 +223,6 @@ def boot() -> None:
     print("T1P_BOOT " + json.dumps({
         "db": db_ok, "gemini": bool(os.environ.get("GEMINI_API_KEY"))}),
         flush=True)
-    if not db_ok:
-        return
     raw = os.environ.get("RENDER_JOB", "").strip()
     if not raw:
         return
