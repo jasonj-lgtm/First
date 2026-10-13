@@ -239,95 +239,131 @@ def build(args: argparse.Namespace) -> None:
     out = Path(args.out)
     beat, cta = args.beat, args.cta
     swipe = args.transition == "swipe"
-    xd = 0.45 if swipe else 0.0  # crossfade overlap
+    xd = 0.45 if swipe else 0.0
     total = beat * 2 + cta - xd
     music = pick_music(args.music)
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        fit_photo(Path(args.before), tmp / "before.png")
-        fit_photo(Path(args.after), tmp / "after.png")
-        make_chip(args.label_before.upper(), tmp / "chip_before.png")
-        make_chip(args.label_after.upper(), tmp / "chip_after.png")
-        if args.hook:
-            make_hook_card(args.hook, tmp / "hook.png")
-        make_cta_card(
-            args.city, str(args.reviews), args.ccb,
-            Path(args.logo) if args.logo else None, tmp / "cta.png",
-        )
+        # Pre-render stills at 1.3x so zoom crops never upscale source pixels.
+        BW, BH = int(W * 1.3) // 2 * 2, int(H * 1.3) // 2 * 2
 
-        beat_frames = int(beat * FPS)
-        cta_frames = int(cta * FPS)
-        # Ken Burns: upscale ~1.3x first so zoompan doesn't jitter, then slow
-        # centered zoom — in on the before, out on the after, for contrast.
-        # (2x looked identical but OOM-killed ffmpeg on 512MB workers.)
-        upscale = f"scale={int(W * 1.3) // 2 * 2}:{int(H * 1.3) // 2 * 2}:flags=lanczos"
-        zoom_in = (
-            f"{upscale},zoompan=z='1+0.10*on/{beat_frames}':d={beat_frames}"
-            f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}"
-        )
-        zoom_out = (
-            f"{upscale},zoompan=z='1.10-0.10*on/{beat_frames}':d={beat_frames}"
-            f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}"
-        )
-        cta_zoom = (
-            f"{upscale},zoompan=z='1+0.04*on/{cta_frames}':d={cta_frames}"
-            f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS},"
-            f"fade=t=in:st=0:d=0.35"
-        )
-        # Chips fade in and slide up into the lower third.
-        chip_anim = "format=rgba,fade=t=in:st=0.25:d=0.45:alpha=1"
-        chip_pos = "x=(main_w-overlay_w)/2:y=main_h*0.70+40*max(0\\,1-t/0.7)"
+        def fit_big(p: Path) -> Image.Image:
+            with Image.open(p) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                return ImageOps.fit(im, (BW, BH), Image.LANCZOS)
 
-        filters = (
-            f"[0:v]{zoom_in}[b];[1:v]{zoom_out}[a];[2:v]{cta_zoom}[c];"
-            f"[3:v]{chip_anim}[cb];[4:v]{chip_anim}[ca];"
-            f"[b][cb]overlay={chip_pos}:shortest=1[bv0];"
-            f"[a][ca]overlay={chip_pos}:shortest=1[av]"
-        )
-        n_in = 5
+        before_big = fit_big(Path(args.before))
+        after_big = fit_big(Path(args.after))
+        make_chip(args.label_before.upper(), tmp / "cb.png")
+        make_chip(args.label_after.upper(), tmp / "ca.png")
+        chip_b = Image.open(tmp / "cb.png").convert("RGBA")
+        chip_a = Image.open(tmp / "ca.png").convert("RGBA")
+        hook_im = None
         if args.hook:
-            # Hook card: visible from frame 1, gone by 1.5s (fade out .3s).
-            filters += (
-                f";[{n_in}:v]format=rgba,fade=t=out:st=1.2:d=0.3:alpha=1[hk];"
-                f"[bv0][hk]overlay=x=0:y=main_h*0.12:enable='lt(t,1.5)'[bv]"
-            )
-            n_in += 1
-        else:
-            filters += ";[bv0]null[bv]"
-        if swipe:
-            filters += (
-                f";[bv][av]xfade=transition=wipeleft:duration={xd}"
-                f":offset={beat - xd}[ba];[ba][c]concat=n=2:v=1:a=0[v]"
-            )
-        else:
-            filters += ";[bv][av][c]concat=n=3:v=1:a=0[v]"
+            make_hook_card(args.hook, tmp / "hk.png")
+            hook_im = Image.open(tmp / "hk.png").convert("RGBA")
+        make_cta_card(args.city, str(args.reviews), args.ccb,
+                      Path(args.logo) if args.logo else None, tmp / "cta.png")
+        cta_big = Image.open(tmp / "cta.png").convert("RGB").resize((BW, BH), Image.LANCZOS)
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "before.png"),
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "after.png"),
-            "-loop", "1", "-t", str(cta), "-i", str(tmp / "cta.png"),
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_before.png"),
-            "-loop", "1", "-t", str(beat), "-i", str(tmp / "chip_after.png"),
-        ]
-        if args.hook:
-            cmd += ["-loop", "1", "-t", str(beat), "-i", str(tmp / "hook.png")]
+        def zoom_frame(big: Image.Image, z: float) -> Image.Image:
+            cw, ch = int(BW / z), int(BH / z)
+            x0, y0 = (BW - cw) // 2, (BH - ch) // 2
+            return big.crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.LANCZOS)
+
+        def paste_anim(frame: Image.Image, overlay: Image.Image, t: float,
+                       y_frac: float, fade_in=(0.25, 0.45), fade_out=None) -> None:
+            alpha = 1.0
+            s, d = fade_in
+            if t < s:
+                alpha = 0.0
+            elif t < s + d:
+                alpha = (t - s) / d
+            if fade_out:
+                fs, fd = fade_out
+                if t >= fs + fd:
+                    alpha = 0.0
+                elif t >= fs:
+                    alpha = min(alpha, 1 - (t - fs) / fd)
+            if alpha <= 0:
+                return
+            ov = overlay
+            if alpha < 1:
+                ov = overlay.copy()
+                ov.putalpha(ov.getchannel("A").point(lambda v: int(v * alpha)))
+            rise = int(40 * max(0.0, 1 - t / 0.7))
+            frame.paste(ov, ((W - ov.width) // 2, int(H * y_frac) + rise), ov)
+
+        def beat1_frame(t: float) -> Image.Image:
+            f = zoom_frame(before_big, 1 + 0.10 * t / beat)
+            if hook_im is not None and t < 1.5:
+                a = hook_im if t < 1.2 else None
+                if a is None:
+                    ov = hook_im.copy()
+                    ov.putalpha(ov.getchannel("A").point(
+                        lambda v: int(v * max(0.0, 1 - (t - 1.2) / 0.3))))
+                    f.paste(ov, (0, int(H * 0.12)), ov)
+                else:
+                    f.paste(hook_im, (0, int(H * 0.12)), hook_im)
+            paste_anim(f, chip_b, t, 0.70)
+            return f
+
+        def beat2_frame(t: float) -> Image.Image:
+            f = zoom_frame(after_big, 1.10 - 0.10 * t / beat)
+            paste_anim(f, chip_a, t, 0.70)
+            return f
+
+        def cta_frame(t: float) -> Image.Image:
+            f = zoom_frame(cta_big, 1 + 0.04 * t / cta)
+            if t < 0.35:  # fade in from black
+                k = t / 0.35
+                f = Image.eval(f, (lambda v, k=k: int(v * k)))
+            return f
+
+        def frames():
+            n1 = int((beat - xd) * FPS)          # before beat (minus overlap)
+            nx = int(xd * FPS)                   # swipe
+            n2 = int(beat * FPS)                 # after beat
+            nc = int(total * FPS) - n1 - nx - n2 # cta fills the remainder
+            for i in range(n1):
+                yield beat1_frame(i / FPS)
+            for i in range(nx):
+                p = (i + 1) / (nx + 1)
+                a = beat1_frame(beat - xd + i / FPS)
+                b = beat2_frame(i / FPS)
+                col = int(W * (1 - p))
+                a.paste(b.crop((col, 0, W, H)), (col, 0))
+                yield a
+            for i in range(n2):
+                yield beat2_frame(xd + i / FPS if swipe else i / FPS)
+            for i in range(nc):
+                yield cta_frame(i / FPS)
+
+        cmd = ["ffmpeg", "-y",
+               "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+               "-r", str(FPS), "-i", "-"]
+        filters = []
         if music:
             cmd += ["-stream_loop", "-1", "-i", str(music)]
-            filters += (
-                f";[{n_in}:a]atrim=0:{total},afade=t=in:st=0:d=0.5,"
-                f"afade=t=out:st={total - 0.8}:d=0.8[aud]"
-            )
-        cmd += ["-filter_complex", filters, "-map", "[v]"]
-        if music:
-            cmd += ["-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
-        cmd += [
-            "-c:v", "libx264", "-preset", "veryfast", "-threads", "1",
-            "-pix_fmt", "yuv420p", "-r", str(FPS),
-            "-t", str(total), str(out),
-        ]
-        run(cmd)
+            filters = ["-filter_complex",
+                       f"[1:a]atrim=0:{total},afade=t=in:st=0:d=0.5,"
+                       f"afade=t=out:st={total - 0.8}:d=0.8[aud]",
+                       "-map", "0:v", "-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
+        cmd += filters + ["-c:v", "libx264", "-preset", "veryfast", "-threads", "1",
+                          "-x264-params", "rc-lookahead=10:ref=1:bframes=1",
+                          "-pix_fmt", "yuv420p", "-t", str(total), str(out)]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        try:
+            for fr in frames():
+                proc.stdin.write(fr.tobytes())
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        proc.wait()
+        if proc.returncode != 0:
+            sys.exit("ffmpeg failed:\n" + proc.stderr.read().decode()[-2000:])
 
     print(f"Built {out} — {total:.1f}s, {W}x{H}, "
           f"{'music bed' if music else 'SILENT'}"
