@@ -415,20 +415,27 @@ def build(args: argparse.Namespace) -> None:
         cmd += filters + ["-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
                           "-x264-params", "rc-lookahead=10:ref=1:bframes=1",
                           "-pix_fmt", "yuv420p", "-t", str(total), str(out)]
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        try:
-            for fr in frames():
-                proc.stdin.write(fr.tobytes())
-            proc.stdin.close()
-        except BrokenPipeError:
-            pass
-        proc.wait()
+        # stderr goes to a FILE, not a pipe: nobody drains a pipe while we
+        # feed stdin, so ffmpeg's progress chatter fills 64KB and deadlocks
+        # both processes (the "stalled render" on slow workers).
+        errlog = tmp / "ffmpeg.err"
+        with open(errlog, "wb") as ef:
+            proc = subprocess.Popen(["ffmpeg", "-hide_banner", "-nostats",
+                                     "-loglevel", "error"] + cmd[1:],
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.DEVNULL, stderr=ef)
+            try:
+                for fr in frames():
+                    proc.stdin.write(fr.tobytes())
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            proc.wait()
 
         comp = out.with_name(out.stem + "_composite.jpg")
         make_composite(Path(args.before), Path(args.after), chip_b, chip_a, comp)
         if proc.returncode != 0:
-            sys.exit("ffmpeg failed:\n" + proc.stderr.read().decode()[-2000:])
+            sys.exit("ffmpeg failed:\n" + errlog.read_text()[-2000:])
 
     print(f"Built {out} — {total:.1f}s, {W}x{H}, "
           f"{'music bed' if music else 'SILENT'}"
