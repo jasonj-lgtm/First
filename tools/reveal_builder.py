@@ -261,13 +261,14 @@ def make_composite(before: Path, after: Path, chip_b: Image.Image,
     d = ImageDraw.Draw(card)
     d.rectangle((0, half - 6, CW, half + 6), fill=WHITE)
 
-    # White organic corner blobs under the badges, like the corporate posts.
-    d.ellipse((-180, -180, 310, 310), fill=WHITE)
-    d.ellipse((CW - 310, CH - 310, CW + 180, CH + 180), fill=WHITE)
-    b = chip_b.resize((250, 250), Image.LANCZOS)
-    a = chip_a.resize((250, 250), Image.LANCZOS)
-    card.paste(b, (6, 6), b)
-    card.paste(a, (CW - a.width - 6, CH - a.height - 6), a)
+    # White organic corner blobs under the badges, like the corporate posts —
+    # sized to hug the badge, not eat the photo.
+    d.ellipse((-140, -140, 235, 235), fill=WHITE)
+    d.ellipse((CW - 235, CH - 235, CW + 140, CH + 140), fill=WHITE)
+    b = chip_b.resize((190, 190), Image.LANCZOS)
+    a = chip_a.resize((190, 190), Image.LANCZOS)
+    card.paste(b, (4, 4), b)
+    card.paste(a, (CW - a.width - 4, CH - a.height - 4), a)
     card.save(dst, quality=90)
 
 
@@ -313,8 +314,10 @@ def build(args: argparse.Namespace) -> None:
 
         before_big = fit_big(Path(args.before))
         after_big = fit_big(Path(args.after))
-        make_chip(args.label_before.upper(), tmp / "cb.png")
-        make_chip(args.label_after.upper(), tmp / "ca.png")
+        # 170px badge ≈ 18% of frame width incl. shadow — corporate proportion;
+        # bigger covers too much of the photo (Jason, 2026-10-17).
+        make_chip(args.label_before.upper(), tmp / "cb.png", diameter=170)
+        make_chip(args.label_after.upper(), tmp / "ca.png", diameter=170)
         chip_b = Image.open(tmp / "cb.png").convert("RGBA")
         chip_a = Image.open(tmp / "ca.png").convert("RGBA")
         hook_im = None
@@ -368,12 +371,12 @@ def build(args: argparse.Namespace) -> None:
                     f.paste(ov, (0, int(H * 0.12)), ov)
                 else:
                     f.paste(hook_im, (0, int(H * 0.12)), hook_im)
-            paste_anim(f, chip_b, t, 0.72, x=44)  # corporate corner: BEFORE lower-left
+            paste_anim(f, chip_b, t, 0.76, x=36)  # corporate corner: BEFORE lower-left
             return f
 
         def beat2_frame(t: float) -> Image.Image:
             f = zoom_frame(after_big, 1.10 - 0.10 * t / beat)
-            paste_anim(f, chip_a, t, 0.72, x=W - chip_a.width - 44)  # AFTER lower-right
+            paste_anim(f, chip_a, t, 0.76, x=W - chip_a.width - 36)  # AFTER lower-right
             return f
 
         def cta_frame(t: float) -> Image.Image:
