@@ -171,6 +171,11 @@ def process(job: dict) -> None:
                 raise RuntimeError(r.stderr[-1500:])
             files.append({"name": out.name, "url": public_url(f"{jid}/{out.name}"),
                           "kind": "reel_9x16"})
+            comp = out.with_name(out.stem + "_composite.jpg")
+            if comp.exists():
+                files.append({"name": comp.name,
+                              "url": public_url(f"{jid}/{comp.name}"),
+                              "kind": "composite_4x5"})
 
         elif engine == "preview":
             photo = resolve_photo(job["photos"], "photo", workdir)

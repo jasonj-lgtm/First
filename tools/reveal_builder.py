@@ -50,12 +50,14 @@ try:
     _B = json.loads((REPO / "render_core" / "brand.json").read_text())
     _C = _B["colors"]
     NAVY, BLUE_A, BLUE_B = _hex(_C["navy"]), _hex(_C["cobalt"]), _hex(_C["azure"])
+    TEAL = _hex(_C.get("teal", "#33BBCE"))
     GOLD = _hex(_C["gold"])
     FONT_CANDIDATES = list(_B["font"]["files"])
 except Exception:
     NAVY = (11, 25, 48)
     BLUE_A = (30, 111, 224)
     BLUE_B = (74, 168, 255)
+    TEAL = (51, 187, 206)
     GOLD = (255, 200, 64)
     FONT_CANDIDATES = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -80,61 +82,67 @@ def fit_photo(src: Path, dst: Path) -> None:
         ImageOps.fit(im, (W, H), Image.LANCZOS, centering=(0.5, 0.5)).save(dst)
 
 
-def make_chip(text: str, dst: Path) -> None:
-    """Rounded blue-gradient label chip ('BEFORE' / 'AFTER'), transparent PNG."""
-    font = load_font(84)
-    pad_x, pad_y = 70, 34
-    tw = int(font.getlength(text))
-    th = font.size
-    cw, ch = tw + pad_x * 2, th + pad_y * 2
+def make_chip(text: str, dst: Path, diameter: int = 260) -> None:
+    """Corporate circular badge ('BEFORE' / 'AFTER'): teal->azure gradient
+    circle with bold white uppercase text — the mark the national T1P
+    pages stamp on every before/after composite. Transparent PNG."""
+    d = diameter
+    margin = 26
+    size = d + margin * 2
+    chip = Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
-    # Horizontal cobalt -> light-blue gradient, masked to a rounded rect.
-    gradient = Image.new("RGB", (cw, ch))
-    for x in range(cw):
-        t = x / max(cw - 1, 1)
-        gradient.paste(
-            tuple(int(a + (b - a) * t) for a, b in zip(BLUE_A, BLUE_B)),
-            (x, 0, x + 1, ch),
-        )
-    mask = Image.new("L", (cw, ch), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, cw - 1, ch - 1), radius=ch // 2, fill=255)
-
-    # Soft drop shadow behind the chip.
-    margin = 24
-    chip = Image.new("RGBA", (cw + margin * 2, ch + margin * 2), (0, 0, 0, 0))
+    # Soft drop shadow.
     shadow = Image.new("RGBA", chip.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle(
-        (margin, margin + 6, margin + cw - 1, margin + ch + 5), radius=ch // 2, fill=(0, 0, 0, 130)
-    )
-    chip.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(10)))
+    ImageDraw.Draw(shadow).ellipse(
+        (margin, margin + 8, margin + d, margin + d + 8), fill=(0, 0, 0, 120))
+    chip.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(12)))
+
+    # Vertical teal -> azure gradient masked to the circle.
+    gradient = Image.new("RGB", (d, d))
+    for y in range(d):
+        t = y / max(d - 1, 1)
+        gradient.paste(
+            tuple(int(a + (b - a) * t) for a, b in zip(TEAL, BLUE_B)),
+            (0, y, d, y + 1),
+        )
+    mask = Image.new("L", (d, d), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, d - 1, d - 1), fill=255)
     chip.paste(gradient, (margin, margin), mask)
+
+    # Size the text to sit comfortably inside the circle.
+    fsize = 60
+    font = load_font(fsize)
+    while font.getlength(text) > d * 0.78 and fsize > 30:
+        fsize -= 2
+        font = load_font(fsize)
     draw = ImageDraw.Draw(chip)
-    draw.text(
-        (margin + pad_x, margin + pad_y - th * 0.12),
-        text,
-        font=font,
-        fill=WHITE,
-    )
+    tw = draw.textlength(text, font=font)
+    draw.text((margin + (d - tw) / 2, margin + d / 2 - font.size * 0.62),
+              text, font=font, fill=WHITE)
     chip.save(dst)
 
 
 def make_cta_card(city: str, reviews: str, ccb: str, logo: Path | None, dst: Path) -> None:
-    """Full-frame navy CTA/proof card — the close every reveal must keep."""
-    card = Image.new("RGB", (W, H), NAVY)
+    """Full-frame CTA/proof card in the corporate style: azure->cobalt
+    gradient, white logo, 'FREE' on a white brushstroke swash."""
+    card = Image.new("RGB", (W, H))
     draw = ImageDraw.Draw(card)
 
-    # Subtle vertical sheen so the card isn't flat.
+    # Corporate gradient: azure up top falling into cobalt.
     for y in range(H):
-        t = abs(y / H - 0.32)
-        lift = max(0, int(26 * (1 - t * 2.2)))
-        draw.line([(0, y), (W, y)], fill=tuple(c + lift for c in NAVY))
+        t = y / (H - 1)
+        draw.line([(0, y), (W, y)],
+                  fill=tuple(int(a + (b - a) * t) for a, b in zip(BLUE_B, BLUE_A)))
 
-    y = int(H * 0.20)
+    y = int(H * 0.18)
     if logo and logo.exists():
         with Image.open(logo) as lg:
             lg = lg.convert("RGBA")
             lg.thumbnail((int(W * 0.55), 300), Image.LANCZOS)
-            card.paste(lg, ((W - lg.width) // 2, y), lg)
+            # All-white logo on blue, per the corporate cards.
+            white_lg = Image.new("RGBA", lg.size, WHITE + (255,))
+            white_lg.putalpha(lg.getchannel("A"))
+            card.paste(white_lg, ((W - lg.width) // 2, y), white_lg)
             y += lg.height + 90
     else:
         brand_font = load_font(74)
@@ -143,17 +151,38 @@ def make_cta_card(city: str, reviews: str, ccb: str, logo: Path | None, dst: Pat
         y += 100
         tag_font = load_font(40)
         tag = "Best House Guests Ever."
-        draw.text(((W - draw.textlength(tag, font=tag_font)) / 2, y), tag, font=tag_font, fill=BLUE_B)
+        draw.text(((W - draw.textlength(tag, font=tag_font)) / 2, y), tag, font=tag_font, fill=WHITE)
         y += 170
 
-    cta_font = load_font(108)
-    text = "FREE ESTIMATE"
+    # "GET YOUR" lead-in, then FREE on a white brushstroke swash,
+    # then ESTIMATE — echoing the corporate 'Get your FREE estimate' card.
+    lead_font = load_font(56)
+    text = "GET YOUR"
+    draw.text(((W - draw.textlength(text, font=lead_font)) / 2, y), text, font=lead_font, fill=WHITE)
+    y += 110
+
+    free_font = load_font(150)
+    text = "FREE"
+    tw = draw.textlength(text, font=free_font)
+    bx0, bx1 = (W - tw) / 2 - 60, (W + tw) / 2 + 60
+    by0, by1 = y - 14, y + free_font.size + 10
+    # Brushstroke swash: clean rounded band with flared ends, like the
+    # corporate 'FREE estimate' card.
+    draw.rounded_rectangle((bx0, by0, bx1, by1), radius=30, fill=WHITE)
+    mid = (by0 + by1) / 2
+    draw.ellipse((bx0 - 28, mid - 40, bx0 + 34, mid + 40), fill=WHITE)
+    draw.ellipse((bx1 - 34, mid - 40, bx1 + 28, mid + 40), fill=WHITE)
+    draw.text(((W - tw) / 2, y - free_font.size * 0.12), text, font=free_font, fill=BLUE_A)
+    y += free_font.size + 60
+
+    cta_font = load_font(96)
+    text = "ESTIMATE"
     draw.text(((W - draw.textlength(text, font=cta_font)) / 2, y), text, font=cta_font, fill=WHITE)
     y += 160
 
     city_font = load_font(66)
     text = f"{city}, OR"
-    draw.text(((W - draw.textlength(text, font=city_font)) / 2, y), text, font=city_font, fill=BLUE_B)
+    draw.text(((W - draw.textlength(text, font=city_font)) / 2, y), text, font=city_font, fill=WHITE)
     y += 170
 
     proof_font = load_font(52)
@@ -179,7 +208,7 @@ def make_cta_card(city: str, reviews: str, ccb: str, logo: Path | None, dst: Pat
 
     ccb_font = load_font(44)
     text = f"CCB #{ccb}"
-    draw.text(((W - draw.textlength(text, font=ccb_font)) / 2, y), text, font=ccb_font, fill=(148, 163, 184))
+    draw.text(((W - draw.textlength(text, font=ccb_font)) / 2, y), text, font=ccb_font, fill=(214, 228, 245))
 
     card.save(dst)
 
@@ -211,6 +240,35 @@ def make_hook_card(text: str, dst: Path) -> None:
         d.text((90, y), ln, font=font, fill=WHITE)
         y += lh
     card.save(dst)
+
+
+def make_composite(before: Path, after: Path, chip_b: Image.Image,
+                   chip_a: Image.Image, dst: Path) -> None:
+    """Corporate-style stacked before/after still (4:5): BEFORE badge on a
+    white corner blob top-left, AFTER bottom-right, thin white divider —
+    the format the national T1P pages post alongside reels."""
+    CW, CH = 1080, 1350
+    half = CH // 2
+    card = Image.new("RGB", (CW, CH), WHITE)
+
+    def fit(p: Path) -> Image.Image:
+        with Image.open(p) as im:
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            return ImageOps.fit(im, (CW, half), Image.LANCZOS)
+
+    card.paste(fit(before), (0, 0))
+    card.paste(fit(after), (0, CH - half))
+    d = ImageDraw.Draw(card)
+    d.rectangle((0, half - 6, CW, half + 6), fill=WHITE)
+
+    # White organic corner blobs under the badges, like the corporate posts.
+    d.ellipse((-180, -180, 310, 310), fill=WHITE)
+    d.ellipse((CW - 310, CH - 310, CW + 180, CH + 180), fill=WHITE)
+    b = chip_b.resize((250, 250), Image.LANCZOS)
+    a = chip_a.resize((250, 250), Image.LANCZOS)
+    card.paste(b, (6, 6), b)
+    card.paste(a, (CW - a.width - 6, CH - a.height - 6), a)
+    card.save(dst, quality=90)
 
 
 def pick_music(music_arg: str | None) -> str | None:
@@ -275,7 +333,8 @@ def build(args: argparse.Namespace) -> None:
             return big.crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.BILINEAR)
 
         def paste_anim(frame: Image.Image, overlay: Image.Image, t: float,
-                       y_frac: float, fade_in=(0.25, 0.45), fade_out=None) -> None:
+                       y_frac: float, fade_in=(0.25, 0.45), fade_out=None,
+                       x: int | None = None) -> None:
             alpha = 1.0
             s, d = fade_in
             if t < s:
@@ -295,7 +354,8 @@ def build(args: argparse.Namespace) -> None:
                 ov = overlay.copy()
                 ov.putalpha(ov.getchannel("A").point(lambda v: int(v * alpha)))
             rise = int(40 * max(0.0, 1 - t / 0.7))
-            frame.paste(ov, ((W - ov.width) // 2, int(H * y_frac) + rise), ov)
+            px = (W - ov.width) // 2 if x is None else x
+            frame.paste(ov, (px, int(H * y_frac) + rise), ov)
 
         def beat1_frame(t: float) -> Image.Image:
             f = zoom_frame(before_big, 1 + 0.10 * t / beat)
@@ -308,12 +368,12 @@ def build(args: argparse.Namespace) -> None:
                     f.paste(ov, (0, int(H * 0.12)), ov)
                 else:
                     f.paste(hook_im, (0, int(H * 0.12)), hook_im)
-            paste_anim(f, chip_b, t, 0.70)
+            paste_anim(f, chip_b, t, 0.72, x=44)  # corporate corner: BEFORE lower-left
             return f
 
         def beat2_frame(t: float) -> Image.Image:
             f = zoom_frame(after_big, 1.10 - 0.10 * t / beat)
-            paste_anim(f, chip_a, t, 0.70)
+            paste_anim(f, chip_a, t, 0.72, x=W - chip_a.width - 44)  # AFTER lower-right
             return f
 
         def cta_frame(t: float) -> Image.Image:
@@ -364,6 +424,9 @@ def build(args: argparse.Namespace) -> None:
         except BrokenPipeError:
             pass
         proc.wait()
+
+        comp = out.with_name(out.stem + "_composite.jpg")
+        make_composite(Path(args.before), Path(args.after), chip_b, chip_a, comp)
         if proc.returncode != 0:
             sys.exit("ffmpeg failed:\n" + proc.stderr.read().decode()[-2000:])
 
