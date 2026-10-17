@@ -101,14 +101,21 @@ def _recolor_gemini(photo: Path, name: str, hexv: str, surfaces: tuple[str, ...]
             {"inline_data": {"mime_type": "image/jpeg",
                              "data": base64.b64encode(buf.getvalue()).decode()}},
         ]}],
-        "generationConfig": {"responseModalities": ["IMAGE"]},
+        # Image models reject IMAGE-only responseModalities on this API;
+        # text+image is the supported combination and we pick the image part.
+        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
     }).encode()
     req = urllib.request.Request(
         GEMINI_URL, data=body,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        payload = json.load(resp)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            payload = json.load(resp)
+    except urllib.error.HTTPError as e:
+        # Surface the API's own reason — a truncated traceback hides it.
+        detail = e.read().decode(errors="replace")[:400]
+        raise RuntimeError(f"Gemini HTTP {e.code}: {detail}") from None
     for part in payload["candidates"][0]["content"]["parts"]:
         data = part.get("inlineData") or part.get("inline_data")
         if data:
