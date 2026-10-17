@@ -166,7 +166,7 @@ def process(job: dict) -> None:
                 cmd += ["--hook", job["hook"]]
             if job.get("reviews"):
                 cmd += ["--reviews", str(job["reviews"])]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2700)
             if r.returncode != 0:
                 raise RuntimeError(r.stderr[-1500:])
             files.append({"name": out.name, "url": public_url(f"{jid}/{out.name}"),
@@ -182,7 +182,7 @@ def process(job: dict) -> None:
             music = ROOT / "assets" / "music" / "licensed" / "t1p-bed-01.wav"
             if music.exists() and "reel" in job.get("formats", ["reel"]):
                 cmd += ["--music", str(music)]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2700)
             if r.returncode != 0:
                 raise RuntimeError(r.stderr[-1500:])
             for name, kind in [("preview_recolor.png", "concept_image"),

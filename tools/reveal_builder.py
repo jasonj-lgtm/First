@@ -270,7 +270,9 @@ def build(args: argparse.Namespace) -> None:
         def zoom_frame(big: Image.Image, z: float) -> Image.Image:
             cw, ch = int(BW / z), int(BH / z)
             x0, y0 = (BW - cw) // 2, (BH - ch) // 2
-            return big.crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.LANCZOS)
+            # BILINEAR: this runs per frame at 30fps — LANCZOS here cost more
+            # CPU than the x264 encode and blew the 900s cap on free workers.
+            return big.crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.BILINEAR)
 
         def paste_anim(frame: Image.Image, overlay: Image.Image, t: float,
                        y_frac: float, fade_in=(0.25, 0.45), fade_out=None) -> None:
@@ -350,7 +352,7 @@ def build(args: argparse.Namespace) -> None:
                        f"[1:a]atrim=0:{total},afade=t=in:st=0:d=0.5,"
                        f"afade=t=out:st={total - 0.8}:d=0.8[aud]",
                        "-map", "0:v", "-map", "[aud]", "-c:a", "aac", "-b:a", "160k"]
-        cmd += filters + ["-c:v", "libx264", "-preset", "veryfast", "-threads", "1",
+        cmd += filters + ["-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
                           "-x264-params", "rc-lookahead=10:ref=1:bframes=1",
                           "-pix_fmt", "yuv420p", "-t", str(total), str(out)]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
