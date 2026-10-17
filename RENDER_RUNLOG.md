@@ -132,3 +132,20 @@ clear stuck RENDER_JOB env on both workers.
 FIXED: n/a this run (paused).
 NEXT: on decision — clear envs, ship fix, re-run acceptance + the
 Wycoff queue row.
+
+## 2026-10-17 — Resume: OOM/deadlock closed, corporate brand pass, queue drain
+- EXECUTED: cleared stuck RENDER_JOB on both workers; deployed v3 to worker-2.
+- FIXED: speed pass (BILINEAR zoom frames, ultrafast x264, 2700s cap) after the
+  900s timeout — then found the REAL bug: ffmpeg stderr pipe deadlock (progress
+  chatter fills 64KB, both processes freeze at ~0 CPU). stderr now goes to a
+  temp file with -nostats -loglevel error.
+- EXECUTED: corporate brand pass from Jason's national-page screenshots — teal
+  circular BEFORE/AFTER badges at opposing corners, azure->cobalt gradient CTA
+  with white-brushstroke FREE ESTIMATE + all-white logo, and a 4:5 stacked
+  composite still (white corner blobs) emitted with every reveal.
+- TESTED: accept-kristensen-319-r5 DONE on the free worker in 2m37s — reel +
+  composite served; row -> needs_approval, QA 92.
+- NEXT: wycoff kitchen reveal (t1oof23yt6n49qu0kw1k-r1), pair b3->a2 bundled at
+  assets/jobs/t1oof23yt6n49qu0kw1k/.
+- BLOCKED: youtube.com / that1painter.com egress-blocked for brand research —
+  screenshots remain the channel for brand refs.
