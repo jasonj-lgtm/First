@@ -5,6 +5,8 @@ const stateEl = document.getElementById("state");
 const chatEl = document.getElementById("chat");
 const textEl = document.getElementById("text");
 const sendBtn = document.getElementById("send");
+const kindEl = document.getElementById("kind");
+const clearBtn = document.getElementById("clear");
 
 const params = new URLSearchParams(location.search);
 const session = params.get("session");
@@ -49,15 +51,34 @@ function openSocket() {
   ws.onclose = () => setState("Disconnected", "err");
 }
 
+function send(payload) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(payload));
+  return true;
+}
+
 sendBtn.addEventListener("click", () => {
   const value = textEl.value.trim();
-  if (!value || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ text: value }));
-  textEl.value = "";
+  if (!value) return;
+  const kind = kindEl.value;
+  // "message" keeps the original plain chat payload; the render kinds are
+  // handled by the screen's rendering skill.
+  const payload =
+    kind === "message"
+      ? { text: value }
+      : { skill: "render", kind, content: value };
+  if (send(payload)) textEl.value = "";
+});
+
+clearBtn.addEventListener("click", () => {
+  send({ skill: "render", kind: "clear" });
 });
 
 textEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") sendBtn.click();
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
 });
 
 pair();

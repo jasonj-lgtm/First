@@ -1,0 +1,25 @@
+{
+  "_comment": "Single palette source for Render Studio presets, Chip 3.0 postcards and the color engine. The six PNW palettes mirror Chip 3.0's Sherwin-Williams set — confirm exact Chip 3.0 names/pairings with Jason and update in place (chip30_sync: pending).",
+  "chip30_sync": "pending",
+  "palettes": [
+    {"id": "pnw-sage", "name": "PNW Sage", "body": {"name": "SW 9130 Evergreen Fog", "hex": "#95978A"}, "trim": {"name": "SW 7008 Alabaster", "hex": "#EDEAE0"}, "accent": {"name": "SW 7048 Urbane Bronze", "hex": "#54504A"}},
+    {"id": "modern-gray", "name": "Modern Gray", "body": {"name": "SW 7019 Gauntlet Gray", "hex": "#79746D"}, "trim": {"name": "SW 7005 Pure White", "hex": "#EDECE6"}, "accent": {"name": "SW 7069 Iron Ore", "hex": "#434341"}},
+    {"id": "bold-bronze", "name": "Bold Bronze", "body": {"name": "SW 7048 Urbane Bronze", "hex": "#54504A"}, "trim": {"name": "SW 7008 Alabaster", "hex": "#EDEAE0"}, "accent": {"name": "SW 6258 Tricorn Black", "hex": "#2F2F30"}},
+    {"id": "coastal-navy", "name": "Coastal Navy", "body": {"name": "SW 6244 Naval", "hex": "#2E3D4C"}, "trim": {"name": "SW 7008 Alabaster", "hex": "#EDEAE0"}, "accent": {"name": "SW 7674 Peppercorn", "hex": "#585A5C"}},
+    {"id": "warm-greige", "name": "Warm Greige", "body": {"name": "SW 7029 Agreeable Gray", "hex": "#D1CBC1"}, "trim": {"name": "SW 7005 Pure White", "hex": "#EDECE6"}, "accent": {"name": "SW 7018 Dovetail", "hex": "#978F88"}},
+    {"id": "charcoal-modern", "name": "Charcoal Modern", "body": {"name": "SW 7069 Iron Ore", "hex": "#434341"}, "trim": {"name": "SW 7005 Pure White", "hex": "#EDECE6"}, "accent": {"name": "SW 7674 Peppercorn", "hex": "#585A5C"}}
+  ],
+  "studio_presets": [
+    {"name": "SW 7048 Urbane Bronze", "hex": "#54504A"},
+    {"name": "SW 7019 Gauntlet Gray", "hex": "#79746D"},
+    {"name": "SW 7069 Iron Ore", "hex": "#434341"},
+    {"name": "SW 6258 Tricorn Black", "hex": "#2F2F30"},
+    {"name": "SW 7029 Agreeable Gray", "hex": "#D1CBC1"},
+    {"name": "SW 7015 Repose Gray", "hex": "#CCC9C0"},
+    {"name": "SW 7008 Alabaster", "hex": "#EDEAE0"},
+    {"name": "SW 6244 Naval", "hex": "#2E3D4C"},
+    {"name": "SW 7674 Peppercorn", "hex": "#585A5C"},
+    {"name": "SW 7018 Dovetail", "hex": "#978F88"},
+    {"name": "SW 9130 Evergreen Fog", "hex": "#95978A"}
+  ]
+}

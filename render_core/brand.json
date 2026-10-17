@@ -1,0 +1,34 @@
+{
+  "name": "That 1 Painter · Oregon",
+  "tagline": "Best House Guests Ever.",
+  "ccb": "249983",
+  "colors": {
+    "navy": "#05132D",
+    "cobalt": "#1A4A9E",
+    "azure": "#178FE5",
+    "teal": "#33BBCE",
+    "pearl": "#EDF0F2",
+    "gold": "#FFC840",
+    "slate": "#94A3B8"
+  },
+  "chip_gradient": ["cobalt", "azure"],
+  "font": {
+    "family": "Calibri",
+    "files": [
+      "C:/Windows/Fonts/calibrib.ttf",
+      "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf",
+      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+    ]
+  },
+  "cta": {
+    "line": "FREE ESTIMATE",
+    "proof": "FIVE-STAR REVIEWS",
+    "reviews_fallback": 351,
+    "reviews_source": "cached — replace with Birdeye/GBP live count at render time"
+  },
+  "disclosure": {
+    "color_preview": "Color concept — AI visualization, actual results may vary"
+  },
+  "notes": "Single brand source for every engine (reveal_builder, color_engine, OpusClip template, Chip 3.0). Labels/chips always use the blue tokens — never navy/orange."
+}
