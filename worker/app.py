@@ -33,6 +33,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,7 +95,8 @@ def validate(job: dict) -> list[str]:
     problems = []
     engine = job.get("engine", "reveal")
     if engine == "clip":
-        problems.append("engine 'clip' runs on the OpusClip bridge, not this worker")
+        if not job.get("video_url"):
+            problems.append("clip needs video_url (public link to the source video)")
     elif engine not in ("reveal", "preview"):
         problems.append(f"unknown engine {engine!r}")
     photos = job.get("photos") or {}
@@ -131,6 +133,68 @@ def resolve_photo(photos: dict, kind: str, workdir: Path) -> Path:
 def public_url(name: str) -> str:
     base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
     return f"{base}/files/{name}" if base else f"/files/{name}"
+
+
+OPUS_BASE = "https://api.opus.pro"
+
+
+def opusclip_clip(job: dict, jid: str) -> list[dict]:
+    """Submit the source video to OpusClip, wait for the clips, return file
+    entries. Stages run PENDING->...->COMPLETE; STALLED is the terminal
+    failure. Clip URLs are signed GCS links served by OpusClip (uriForExport)."""
+    key = os.environ.get("OPUSCLIP_API_KEY")
+    if not key:
+        raise RuntimeError("OPUSCLIP_API_KEY not set on this service")
+    hdrs = {"Authorization": f"Bearer {key}"}
+    body: dict = {"videoUrl": job["video_url"],
+                  "curationPref": {"clipDurations": [[15, 60]]}}
+    if job.get("keywords"):
+        body["curationPref"]["topicKeywords"] = list(job["keywords"])[:5]
+    r = requests.post(f"{OPUS_BASE}/api/clip-projects", json=body,
+                      headers=hdrs, timeout=60)
+    if r.status_code >= 400:
+        raise RuntimeError(f"OpusClip submit HTTP {r.status_code}: {r.text[:300]}")
+    pid = r.json().get("projectId") or r.json().get("id")
+    stage = r.json().get("stage", "PENDING")
+    print("T1P_CLIP " + json.dumps({"id": jid, "projectId": pid,
+                                    "stage": stage}), flush=True)
+    deadline = time.time() + 45 * 60
+    while time.time() < deadline:
+        time.sleep(60)
+        pr = requests.get(f"{OPUS_BASE}/api/clip-projects/{pid}",
+                          headers=hdrs, timeout=60)
+        pr.raise_for_status()
+        p = pr.json()
+        if p.get("stage") != stage:
+            stage = p.get("stage", "?")
+            print("T1P_CLIP " + json.dumps({"id": jid, "projectId": pid,
+                                            "stage": stage}), flush=True)
+        if stage == "STALLED":
+            raise RuntimeError(
+                f"OpusClip project {pid} STALLED: {str(p.get('error', ''))[:200]}")
+        if stage == "COMPLETE":
+            cr = requests.get(f"{OPUS_BASE}/api/exportable-clips",
+                              params={"q": "findByProjectId", "projectId": pid,
+                                      "pageNum": 1, "pageSize": 50},
+                              headers=hdrs, timeout=60)
+            cr.raise_for_status()
+            clips = cr.json() or []
+            clips.sort(key=lambda c: c.get("viralityScore") or c.get("score") or 0,
+                       reverse=True)
+            files = []
+            for i, c in enumerate(clips[:5], 1):
+                url = c.get("uriForExport") or c.get("uriForPreview")
+                if url:
+                    files.append({"name": c.get("title") or f"clip {i}",
+                                  "url": url, "kind": "clip",
+                                  "durationSec": round((c.get("durationMs") or 0) / 1000),
+                                  "viralityScore": c.get("viralityScore")})
+            if not files:
+                raise RuntimeError(f"OpusClip project {pid} completed "
+                                   "with no exportable clips")
+            return files
+    raise RuntimeError(f"OpusClip project {pid} still {stage} after 45 min — "
+                       "it keeps processing on their side; requeue to re-check")
 
 
 def tail_error(stderr: str) -> str:
@@ -203,9 +267,11 @@ def process(job: dict) -> None:
                 if (workdir / name).exists():
                     files.append({"name": name, "url": public_url(f"{jid}/{name}"),
                                   "kind": kind})
+        elif engine == "clip":
+            files = opusclip_clip(job, jid)
+
         else:
-            raise ValueError(f"engine {engine!r} not handled by the worker "
-                             "(clip jobs stay on the OpusClip bridge)")
+            raise ValueError(f"engine {engine!r} not handled by the worker")
 
         print("T1P_RESULT " + json.dumps({"id": jid, "status": "done",
                                           "files": files}), flush=True)
@@ -233,7 +299,8 @@ def boot() -> None:
               "Internal Database URL from t1p-render-jobs is pasted into "
               "this service's env vars.")
     print("T1P_BOOT " + json.dumps({
-        "db": db_ok, "gemini": bool(os.environ.get("GEMINI_API_KEY"))}),
+        "db": db_ok, "gemini": bool(os.environ.get("GEMINI_API_KEY")),
+        "opusclip": bool(os.environ.get("OPUSCLIP_API_KEY"))}),
         flush=True)
     raw = os.environ.get("RENDER_JOB", "").strip()
     if not raw:
