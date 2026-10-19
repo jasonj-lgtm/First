@@ -149,3 +149,16 @@ Wycoff queue row.
   assets/jobs/t1oof23yt6n49qu0kw1k/.
 - BLOCKED: youtube.com / that1painter.com egress-blocked for brand research —
   screenshots remain the channel for brand refs.
+
+## 2026-10-19/20 — Gemini live, OpusClip bridge, Pierce Moon preview shipped
+- EXECUTED: Pierce Moon (Salem) preview r4 DONE in ~3 min after Jason enabled
+  Gemini billing — first live photoreal recolor; row -> needs_approval.
+- FIXED: 429 quota (free tier) diagnosed via new error-surfacing (tail_error +
+  Gemini HTTP body); responseModalities TEXT+IMAGE.
+- EXECUTED: OpusClip bridge shipped (submit/poll/collect, top 5 by virality);
+  Clip card enabled in Render Studio v4 with source-video field; meta/status
+  refreshed (gemini ok).
+- BLOCKED: OPUSCLIP_API_KEY still absent on worker-2 per T1P_BOOT — Jason
+  re-checking service/variable name.
+- NEXT: verify opusclip:true on next boot; durable preview storage (DATABASE_URL
+  on worker-2, outputs to Postgres); drain found queue empty at 23:56.
