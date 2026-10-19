@@ -133,6 +133,13 @@ def public_url(name: str) -> str:
     return f"{base}/files/{name}" if base else f"/files/{name}"
 
 
+def tail_error(stderr: str) -> str:
+    """Last meaningful lines of a subprocess traceback — Render's log
+    pipeline truncates long lines, so the punchline must come first."""
+    lines = [l for l in stderr.strip().splitlines() if l.strip()]
+    return " | ".join(lines[-3:])[-700:] if lines else "no stderr"
+
+
 def process(job: dict) -> None:
     """Run one job end to end; record status + file links in Postgres."""
     jid = job["id"]
@@ -168,7 +175,7 @@ def process(job: dict) -> None:
                 cmd += ["--reviews", str(job["reviews"])]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=2700)
             if r.returncode != 0:
-                raise RuntimeError(r.stderr[-1500:])
+                raise RuntimeError(tail_error(r.stderr))
             files.append({"name": out.name, "url": public_url(f"{jid}/{out.name}"),
                           "kind": "reel_9x16"})
             comp = out.with_name(out.stem + "_composite.jpg")
@@ -189,7 +196,7 @@ def process(job: dict) -> None:
                 cmd += ["--music", str(music)]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=2700)
             if r.returncode != 0:
-                raise RuntimeError(r.stderr[-1500:])
+                raise RuntimeError(tail_error(r.stderr))
             for name, kind in [("preview_recolor.png", "concept_image"),
                                ("preview_card.jpg", "card_4x5"),
                                ("preview_reveal.mp4", "reel_9x16")]:
