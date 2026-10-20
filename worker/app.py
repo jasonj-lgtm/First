@@ -146,21 +146,27 @@ def opusclip_clip(job: dict, jid: str) -> list[dict]:
     if not key:
         raise RuntimeError("OPUSCLIP_API_KEY not set on this service")
     hdrs = {"Authorization": f"Bearer {key}"}
-    body: dict = {"videoUrl": job["video_url"],
-                  "curationPref": {"clipDurations": [[15, 60]]}}
-    if job.get("keywords"):
-        body["curationPref"]["topicKeywords"] = list(job["keywords"])[:5]
-    r = requests.post(f"{OPUS_BASE}/api/clip-projects", json=body,
-                      headers=hdrs, timeout=60)
-    if r.status_code >= 400:
-        raise RuntimeError(f"OpusClip submit HTTP {r.status_code}: {r.text[:300]}")
-    pid = r.json().get("projectId") or r.json().get("id")
-    stage = r.json().get("stage", "PENDING")
+    pid = job.get("opusProjectId")  # re-attach to a finished project: no new credits
+    if pid:
+        stage = "PENDING"
+    else:
+        body: dict = {"videoUrl": job["video_url"],
+                      "curationPref": {"clipDurations": [[15, 60]]}}
+        if job.get("keywords"):
+            body["curationPref"]["topicKeywords"] = list(job["keywords"])[:5]
+        r = requests.post(f"{OPUS_BASE}/api/clip-projects", json=body,
+                          headers=hdrs, timeout=60)
+        if r.status_code >= 400:
+            raise RuntimeError(f"OpusClip submit HTTP {r.status_code}: {r.text[:300]}")
+        pid = r.json().get("projectId") or r.json().get("id")
+        stage = r.json().get("stage", "PENDING")
     print("T1P_CLIP " + json.dumps({"id": jid, "projectId": pid,
                                     "stage": stage}), flush=True)
     deadline = time.time() + 45 * 60
+    first = True
     while time.time() < deadline:
-        time.sleep(60)
+        time.sleep(5 if first else 60)
+        first = False
         pr = requests.get(f"{OPUS_BASE}/api/clip-projects/{pid}",
                           headers=hdrs, timeout=60)
         pr.raise_for_status()
@@ -179,6 +185,20 @@ def opusclip_clip(job: dict, jid: str) -> list[dict]:
                               headers=hdrs, timeout=60)
             cr.raise_for_status()
             clips = cr.json() or []
+            if isinstance(clips, dict):
+                # The live API wraps the list; find it under common keys.
+                found = None
+                for k in ("items", "content", "data", "clips", "records", "results"):
+                    if isinstance(clips.get(k), list):
+                        found = clips[k]
+                        break
+                if found is None:
+                    found = next((v for v in clips.values()
+                                  if isinstance(v, list)), None)
+                if found is None:
+                    raise RuntimeError("unexpected exportable-clips shape: "
+                                       + json.dumps(clips)[:300])
+                clips = found
             clips.sort(key=lambda c: c.get("viralityScore") or c.get("score") or 0,
                        reverse=True)
             files = []
