@@ -24,7 +24,7 @@
   "cta": {
     "line": "FREE ESTIMATE",
     "proof": "FIVE-STAR REVIEWS",
-    "reviews_fallback": 351,
+    "reviews_fallback": 371,
     "reviews_source": "cached — replace with Birdeye/GBP live count at render time"
   },
   "disclosure": {

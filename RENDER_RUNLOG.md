@@ -162,3 +162,22 @@ Wycoff queue row.
   re-checking service/variable name.
 - NEXT: verify opusclip:true on next boot; durable preview storage (DATABASE_URL
   on worker-2, outputs to Postgres); drain found queue empty at 23:56.
+
+## 2026-10-21 — Reel Pipeline merge (phase 1: machinery side)
+- MERGE: adopting the parallel "T1P Reel Pipeline" session's creative layer
+  (6 recipes t1p_recipes.py, music engine t1p_music2.py, Reel Catalogue
+  Oct 26–Dec 31 = 61 slots, captions template, T1P_Job_Colors.xlsx) onto this
+  pipeline's worker + Render Studio machinery. Studio replaces chat→Slack
+  delivery; every output still lands needs_approval (Juan).
+- EXECUTED: review count corrected 351 -> 371 (GHL, 4.9★) in reveal_builder
+  default, brand.json reviews_fallback, SKILL.md CTA line + QA check.
+- EXECUTED: meta/status v4 — opusclip "ok" (two clip runs shipped), reviews 371.
+- EXECUTED: weekly-build routine created (trig_01FmyqZMgxhMaiJMmDvL3dpx):
+  Thursdays 5:56am PT, reads the Reel Catalogue from the repo, queues up to
+  7 rows, drains them on worker-2; no-ops with a needs_input note while the
+  catalogue file is missing.
+- BLOCKED: the Content Builder files are NOT reachable from this session —
+  not in Google Drive (searched), the reel-builder session isn't listed under
+  this account's CCR sessions, and no cross-session messaging tool is exposed.
+  Jason must have that session push its package to this branch, or attach the
+  files here, before the Thursday batch can run for real.

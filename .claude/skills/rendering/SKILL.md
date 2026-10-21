@@ -54,7 +54,7 @@ template · QA rubric.
 - **Engine options:** Reveal · Generative reveal (Veo 3.1, Phase 6) ·
   AI Color Preview · Clip (OpusClip bridge).
 - **Extra QA checks (with the rubric):** hook burned in 0–1.5s · live
-  review count (Birdeye/GBP; cached 351 + flag if unreachable) · licensed
+  review count (Birdeye/GBP; cached 371, GHL 4.9★ Oct 2026 + flag if unreachable) · licensed
   or original audio only (assets/music/licensed/) · "Color concept" label
   on every AI preview · CTA card has city + CCB #249983.
 - **Trigger phrases:** "make a reveal from [job]" · "run the render
@@ -102,7 +102,7 @@ runs.
   never navy/orange. Labels animate in (fade/slide/scale), not static.
 - **Logo:** persistent brand logo; van/brand outro where footage allows.
 - **CTA/proof close (the automated edge — never drop it):**
-  `FREE ESTIMATE · [City], OR · 351 FIVE-STAR REVIEWS · CCB #249983`
+  `FREE ESTIMATE · [City], OR · 371 FIVE-STAR REVIEWS · CCB #249983`
   Geo-anchor to the job's real city (from CompanyCam). Refresh the review
   count at build time if a live source is available.
 - Static graphics variant: navy swirl-texture header with

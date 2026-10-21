@@ -14,7 +14,7 @@ Usage:
     python3 tools/reveal_builder.py \
         --before before.jpg --after after.jpg --city Hillsboro \
         --music track.mp3 [--logo logo.png] [--out reveal.mp4] \
-        [--reviews 351] [--ccb 249983] [--beat 4.0] [--cta 2.5]
+        [--reviews 371] [--ccb 249983] [--beat 4.0] [--cta 2.5]
 
 Requires: ffmpeg on PATH, Pillow.
 """
@@ -458,7 +458,7 @@ def main() -> None:
     p.add_argument("--out", default="reveal.mp4")
     p.add_argument("--music", help="Music bed (mp3/m4a/wav) — required to ship")
     p.add_argument("--logo", help="Logo PNG for the CTA card (text fallback if omitted)")
-    p.add_argument("--reviews", default="351", help="Five-star review count")
+    p.add_argument("--reviews", default="371", help="Five-star review count")
     p.add_argument("--ccb", default="249983", help="CCB license number")
     p.add_argument("--label-before", default="BEFORE", help="Chip text for the first beat")
     p.add_argument("--label-after", default="AFTER", help="Chip text for the second beat")
